@@ -58,3 +58,14 @@ jobs:
           releaseName: "Attestrum Booth v__VERSION__"
           releaseDraft: true
           args: --target aarch64-apple-darwin
+
+      # attestrum.com deep-links the dmg by a VERSION-STABLE name via
+      # /releases/latest/download/ — upload a stable-named copy alongside
+      # the versioned asset.
+      - name: Upload stable-named dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dmg=$(ls src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          cp "$dmg" Booth-macOS-AppleSilicon.dmg
+          gh release upload "${{ github.ref_name }}" Booth-macOS-AppleSilicon.dmg --clobber -R "${{ github.repository }}"
