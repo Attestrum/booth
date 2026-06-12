@@ -1,0 +1,4 @@
+# booth needs a newer trait solver than the machine's pinned 1.89 default
+# (time 0.3.48 coherence in tauri-utils/cookie fails there).
+[toolchain]
+channel = "stable"

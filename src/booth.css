@@ -1,0 +1,296 @@
+:root {
+  --cyan: #7fe0ff;
+  --bg: #0a0e14;
+  --green: #7fffb0;
+  --dim-cyan: rgba(127, 224, 255, 0.45);
+  --faint-cyan: rgba(127, 224, 255, 0.12);
+  --amber: #e0a52e;
+  --red: #ff6b6b;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--cyan);
+  font-family: "IBM Plex Mono", "JetBrains Mono", "Courier New", monospace;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* the whole window is a drag region except interactive zones */
+.titlebar-drag {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 38px;
+  z-index: 90;
+  -webkit-app-region: drag;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- CRT dressing (scanlines removed per founder, 2026-06-12) ---- */
+.vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 101;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    rgba(0, 0, 0, 0.38) 100%
+  );
+}
+
+/* ---- clickable rows ---- */
+.load-row {
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.load-row .load-row-open {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.load-row:hover {
+  border-color: var(--dim-cyan) !important;
+  background: rgba(127, 224, 255, 0.06);
+}
+.load-row:hover .load-row-open {
+  opacity: 0.8;
+}
+
+/* ---- buttons (DESIGN.md §C — visually apparent clickables; brightened
+        per founder 2026-06-12: resting state must read as interactive).
+        Metrics are viewport-scaled (clamp) so the full control bar fits at
+        ANY window width — founder 2026-06-12: VIEW TRANSCRIPT overflow. ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(4px, 0.5vw, 8px);
+  padding: clamp(8px, 0.9vw, 12px) clamp(8px, 1.2vw, 18px);
+  background: rgba(127, 224, 255, 0.07);
+  border: 1px solid rgba(127, 224, 255, 0.55);
+  color: var(--cyan);
+  font-family: inherit;
+  font-size: clamp(10px, 0.85vw, 12px);
+  font-weight: 500;
+  letter-spacing: clamp(0.06em, 0.12vw, 0.18em);
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--dim-cyan);
+  box-shadow:
+    0 0 10px rgba(127, 224, 255, 0.12),
+    inset 0 0 14px rgba(127, 224, 255, 0.05);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+  user-select: none;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: rgba(127, 224, 255, 0.16);
+  border-color: var(--cyan);
+  text-shadow: 0 0 12px var(--cyan);
+  box-shadow:
+    0 0 20px rgba(127, 224, 255, 0.35),
+    inset 0 0 18px rgba(127, 224, 255, 0.1);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.18;
+  cursor: default;
+  box-shadow: none;
+  text-shadow: none;
+  background: transparent;
+}
+.btn--danger {
+  background: rgba(224, 165, 46, 0.08);
+  border-color: rgba(224, 165, 46, 0.6);
+  color: var(--amber);
+  text-shadow: 0 0 8px rgba(224, 165, 46, 0.5);
+  box-shadow:
+    0 0 10px rgba(224, 165, 46, 0.12),
+    inset 0 0 14px rgba(224, 165, 46, 0.05);
+}
+.btn--danger:hover:not(:disabled) {
+  background: rgba(224, 165, 46, 0.16);
+  border-color: var(--amber);
+  text-shadow: 0 0 12px var(--amber);
+  box-shadow:
+    0 0 20px rgba(224, 165, 46, 0.3),
+    inset 0 0 18px rgba(224, 165, 46, 0.1);
+}
+.btn--success {
+  background: rgba(127, 255, 176, 0.07);
+  border-color: rgba(127, 255, 176, 0.6);
+  color: var(--green);
+  text-shadow: 0 0 8px rgba(127, 255, 176, 0.5);
+  box-shadow:
+    0 0 10px rgba(127, 255, 176, 0.12),
+    inset 0 0 14px rgba(127, 255, 176, 0.05);
+}
+.btn--success:hover:not(:disabled) {
+  background: rgba(127, 255, 176, 0.15);
+  border-color: var(--green);
+  text-shadow: 0 0 12px var(--green);
+  box-shadow:
+    0 0 20px rgba(127, 255, 176, 0.3),
+    inset 0 0 18px rgba(127, 255, 176, 0.1);
+}
+.btn-hint {
+  opacity: 0.6;
+  font-size: clamp(9px, 0.7vw, 10px);
+  letter-spacing: 0.1em;
+}
+/* narrow window: the key hints are the first thing to go — keys still work */
+@media (max-width: 1340px) {
+  .control-bar .btn-hint {
+    display: none;
+  }
+}
+
+/* the booth's bottom action row — fluid gap, never wraps or clips */
+.control-bar {
+  display: flex;
+  align-items: center;
+  gap: clamp(3px, 0.5vw, 10px);
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+/* No ring/circle around REC (founder 2026-06-12) — bare glyph + label; the
+   live pulse moved from the ring's box-shadow to the glyph's glow. */
+.rec-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: clamp(6px, 0.8vw, 10px) clamp(10px, 1.4vw, 22px);
+  background: transparent;
+  border: none;
+  color: var(--red);
+  font-family: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+.rec-btn:hover .rec-btn-glyph {
+  text-shadow: 0 0 22px var(--red);
+}
+.rec-btn:active {
+  transform: translateY(1px);
+}
+.rec-btn-glyph {
+  font-size: clamp(22px, 2vw, 28px);
+  line-height: 1;
+  text-shadow: 0 0 12px var(--red);
+  transition: text-shadow 120ms ease;
+}
+.rec-btn-label {
+  color: var(--cyan);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-shadow: 0 0 8px var(--dim-cyan);
+}
+.rec-btn--live .rec-btn-glyph {
+  animation: rec-pulse 1.6s ease-in-out infinite;
+}
+@keyframes rec-pulse {
+  0%,
+  100% {
+    text-shadow: 0 0 8px rgba(255, 107, 107, 0.45);
+  }
+  50% {
+    text-shadow: 0 0 26px rgba(255, 107, 107, 0.95);
+  }
+}
+
+/* teleprompter text is click-to-edit when idle */
+.prompter-text--editable {
+  cursor: text;
+  border-radius: 2px;
+  transition: background 120ms ease;
+}
+.prompter-text--editable:hover {
+  background: rgba(127, 224, 255, 0.04);
+}
+.prompter-edit {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(127, 224, 255, 0.04);
+  border: 1px solid var(--dim-cyan);
+  border-radius: 2px;
+  color: var(--cyan);
+  font-family: inherit;
+  letter-spacing: 0.01em;
+  padding: 12px 14px;
+  resize: vertical;
+  outline: none;
+}
+.prompter-edit:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 14px rgba(127, 224, 255, 0.15);
+}
+
+/* per-take ✕ on the take cards — single click; the undo window is the net */
+.take-delete {
+  background: transparent;
+  border: none;
+  color: var(--dim-cyan);
+  opacity: 0.55;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    opacity 120ms ease;
+}
+.take-delete:hover {
+  color: var(--red);
+  opacity: 1;
+  text-shadow: 0 0 8px var(--red);
+}
+.take-delete:disabled {
+  opacity: 0.18;
+  cursor: default;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--faint-cyan);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dim-cyan);
+}

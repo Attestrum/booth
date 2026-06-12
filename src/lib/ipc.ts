@@ -1,0 +1,65 @@
+// Typed wrappers around every Rust command + event. The only IPC surface.
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Session, Take } from "./session";
+
+export interface AudioFrame {
+  rms: number;
+  peak: number;
+  clip: boolean;
+  window: number[]; // 128 samples, -1..1
+}
+
+export interface SessionSummary {
+  episodeDir: string;
+  episode: string;
+  recorded: number;
+  total: number;
+  takes: number;
+}
+
+export interface DeviceInfo {
+  name: string;
+  sampleRate: number;
+}
+
+// ---- session/script ----
+export const scanSessions = () => invoke<SessionSummary[]>("scan_sessions");
+export const listEpisodes = () => invoke<string[]>("list_episodes");
+export const openEpisode = (dir: string) =>
+  invoke<{ session: Session; fresh: boolean }>("open_episode", {
+    dir,
+    nowIso: new Date().toISOString(),
+  });
+export const saveSession = (dir: string, session: Session) =>
+  invoke<void>("save_session", { dir, session });
+
+// ---- audio ----
+export const currentDevice = () => invoke<DeviceInfo>("current_device");
+export const startRecording = (dir: string, passage: number) =>
+  invoke<string>("start_recording", { dir, passage }); // -> take filename
+export const stopRecording = () => invoke<Session>("stop_recording");
+export const discardTake = (dir: string, passage: number) =>
+  invoke<[Session, Take]>("discard_take", { dir, passage });
+export const discardTakeAt = (dir: string, passage: number, index: number) =>
+  invoke<[Session, Take]>("discard_take_at", { dir, passage, index });
+export const undoDiscard = (dir: string, passage: number, take: Take) =>
+  invoke<Session>("undo_discard", { dir, passage, take });
+export const editUnitText = (dir: string, unit: number, text: string) =>
+  invoke<[Session, string[]]>("edit_unit_text", { dir, unit, text });
+export const takePath = (dir: string, file: string) =>
+  invoke<string>("take_path", { dir, file });
+
+// ---- export (P4) ----
+export const exportSession = (dir: string, allowPartial: boolean) =>
+  invoke<{ wav: string; mp3: string }>("export_session", {
+    dir,
+    allowPartial,
+  });
+
+export const onAudioFrame = (cb: (f: AudioFrame) => void): Promise<UnlistenFn> =>
+  listen<AudioFrame>("audio:frame", (e) => cb(e.payload));
+
+export const onExportProgress = (
+  cb: (msg: string) => void,
+): Promise<UnlistenFn> => listen<string>("export:progress", (e) => cb(e.payload));
