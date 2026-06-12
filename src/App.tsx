@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useAutopilot } from "./hooks/useAutopilot";
 import { saveSession } from "./lib/ipc";
 import { Scanlines } from "./components/Scanlines";
+import { HelpOverlay } from "./components/HelpOverlay";
 import { PowerOn } from "./screens/PowerOn";
 import { Load } from "./screens/Load";
 import { Grouping } from "./screens/Grouping";
@@ -61,6 +62,7 @@ export default function App() {
           }}
         />
       )}
+      {screen !== "power-on" && <HelpOverlay />}
       <Scanlines />
     </>
   );

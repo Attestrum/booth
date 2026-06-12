@@ -229,6 +229,51 @@ body,
   }
 }
 
+/* ? help — faint corner hint, modal cheat-sheet */
+.help-hint {
+  position: fixed;
+  right: 16px;
+  bottom: 14px;
+  z-index: 40;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--faint-cyan);
+  color: var(--dim-cyan);
+  opacity: 0.5;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    opacity 120ms ease,
+    border-color 120ms ease;
+}
+.help-hint:hover {
+  opacity: 1;
+  border-color: var(--dim-cyan);
+}
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 10, 0.82);
+  backdrop-filter: blur(2px);
+}
+.help-panel {
+  min-width: 520px;
+  max-width: 640px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 28px 34px;
+  background: #0a0e14;
+  border: 1px solid var(--dim-cyan);
+  box-shadow: 0 0 40px rgba(127, 224, 255, 0.15);
+}
+
 /* teleprompter text is click-to-edit when idle */
 .prompter-text--editable {
   cursor: text;

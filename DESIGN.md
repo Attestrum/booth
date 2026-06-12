@@ -267,5 +267,6 @@ on take-less passages; `cursor` is always clamped to a valid index.
 | 18 | App was unusable off the author's machine — episodes root, asset scope, and the edit write-back sink were all hardcoded to one workspace | OSS-blocking | project model: recents + OPEN FOLDER (config.rs), runtime asset-scope grants, `session.sourceFile` write-back target (legacy completed-videos sink removed) |
 | 19 | Only pre-built script-units.json / chunks.json could be opened — a stranger has a script in a document, not our JSON | OSS-blocking | IMPORT SCRIPT… (.md/.txt) on LOAD: `units_from_document` → persisted units file → normal session; cue convention preserved |
 | 20 | Export hard-required ffmpeg (mp3 step) — strangers won't have it installed | OSS-blocking | ffmpeg is optional: WAV always exports (pure Rust); mp3 encodes when `ffmpeg_available()`; mixed-rate-without-ffmpeg fails with a clear error naming the rates; Review shows a NO FFMPEG chip before export |
+| 21 | No in-app documentation — a stranger has to find the README to learn the keys | onboarding | `?` modal cheat-sheet on every screen (HelpOverlay; swallows all keys while open so reading help can't trigger a recording), faint `?` corner button |
 
 Future gaps: add the transition to the diagram FIRST, then implement, then append a row here.

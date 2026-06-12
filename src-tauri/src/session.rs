@@ -384,6 +384,45 @@ mod tests {
     }
 
     #[test]
+    fn import_document_end_to_end() {
+        let root = std::env::temp_dir().join("booth-session-test/import-root");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let md = root.join("my-script.md");
+        fs::write(
+            &md,
+            "# Intro\n\nHello there. This is a script.\n\n[VISUAL: a beat]\n\n# Part Two\n\nMore words here.\n",
+        )
+        .unwrap();
+
+        let (dir, s, fresh) = import_document(&md, "2026-06-12T00:00:00Z".into()).unwrap();
+        assert!(fresh);
+        assert_eq!(dir, root);
+        assert_eq!(s.source_file.as_deref(), Some(md.to_str().unwrap()));
+        assert_eq!(s.units.len(), 3);
+        assert_eq!(s.units[0].chapter, "Intro");
+        assert_eq!(s.units[1].cue, "[VISUAL: a beat]");
+        assert_eq!(s.units[2].chapter, "Part Two");
+        assert!(root.join("narration/script-units.json").exists());
+
+        // the imported folder is now scannable + resumable
+        let found = scan(&root);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].episode_dir, root.to_string_lossy());
+
+        // re-import over an existing session is refused
+        assert!(import_document(&md, "2026-06-12T00:00:01Z".into()).is_err());
+        // unsupported extension is refused
+        let pdf = root.join("nope.pdf");
+        fs::write(&pdf, "x").unwrap();
+        let err = match import_document(&pdf, "now".into()) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("pdf import should be refused"),
+        };
+        assert!(err.contains(".md or .txt"), "got: {err}");
+    }
+
+    #[test]
     fn edit_unit_text_propagates_to_units_file_and_md() {
         let root = std::env::temp_dir().join("booth-session-test/edit-root");
         let _ = fs::remove_dir_all(&root);
@@ -424,6 +463,47 @@ mod tests {
             .unwrap()
             .is_empty());
     }
+}
+
+/// Import a .md/.txt document: parse to units, persist them as the folder's
+/// narration/script-units.json (the standard parse ladder takes over), open
+/// the fresh session, and link `source_file` for inline-edit write-back.
+/// Refuses folders that already have a session and non-md/txt extensions.
+pub fn import_document(src: &Path, now_iso: String) -> Result<(PathBuf, Session, bool)> {
+    let ext = src
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let markdown = matches!(ext.as_str(), "md" | "markdown");
+    if !markdown && ext != "txt" {
+        bail!(
+            "can't import .{ext} — bring a .md or .txt script (PDF/docx: export to one of those first)"
+        );
+    }
+    let dir = src
+        .parent()
+        .ok_or_else(|| anyhow!("script file has no parent folder"))?
+        .to_path_buf();
+    if session_path(&dir).exists() {
+        bail!(
+            "this folder already has a booth session — open it from the list instead \
+             (or remove its narration/booth/ to re-import)"
+        );
+    }
+    let raw = fs::read_to_string(src).with_context(|| format!("read {}", src.display()))?;
+    let units = script::units_from_document(&raw, markdown);
+    if units.is_empty() {
+        bail!("no readable text found in that file");
+    }
+    fs::create_dir_all(dir.join("narration"))?;
+    fs::write(
+        dir.join("narration/script-units.json"),
+        serde_json::to_string_pretty(&units)?,
+    )?;
+    let (mut session, fresh) = open(&dir, now_iso)?;
+    session.source_file = Some(src.to_string_lossy().into_owned());
+    save(&dir, &session)?;
+    Ok((dir, session, fresh))
 }
 
 /// Edit one unit's text in place and propagate to the on-disk sources: the
