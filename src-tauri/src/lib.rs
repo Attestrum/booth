@@ -248,7 +248,14 @@ fn undo_discard(dir: String, passage: usize, take: Take) -> Result<Session, Stri
 #[derive(Serialize)]
 struct ExportResult {
     wav: String,
-    mp3: String,
+    mp3: Option<String>,
+}
+
+/// Whether mp3 encode / mixed-rate resampling are available (Review screen
+/// shows the status before export).
+#[tauri::command]
+fn ffmpeg_status() -> bool {
+    export::ffmpeg_available().is_some()
 }
 
 #[tauri::command]
@@ -263,7 +270,7 @@ fn export_session(
         .map_err(|e| format!("{e:#}"))?;
     Ok(ExportResult {
         wav: wav.to_string_lossy().into_owned(),
-        mp3: mp3.to_string_lossy().into_owned(),
+        mp3: mp3.map(|p| p.to_string_lossy().into_owned()),
     })
 }
 
@@ -301,6 +308,7 @@ pub fn run() {
             edit_unit_text,
             undo_discard,
             take_path,
+            ffmpeg_status,
             export_session
         ])
         .run(tauri::generate_context!())

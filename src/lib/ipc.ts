@@ -63,8 +63,9 @@ export const takePath = (dir: string, file: string) =>
   invoke<string>("take_path", { dir, file });
 
 // ---- export (P4) ----
+export const ffmpegStatus = () => invoke<boolean>("ffmpeg_status");
 export const exportSession = (dir: string, allowPartial: boolean) =>
-  invoke<{ wav: string; mp3: string }>("export_session", {
+  invoke<{ wav: string; mp3: string | null }>("export_session", {
     dir,
     allowPartial,
   });

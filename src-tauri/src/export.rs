@@ -30,6 +30,19 @@ fn ffmpeg_bin() -> PathBuf {
     PathBuf::from("ffmpeg")
 }
 
+/// Locate a runnable ffmpeg, if any. ffmpeg is OPTIONAL: WAV export is pure
+/// Rust and always works; mp3 encode and mixed-rate resampling light up when
+/// ffmpeg is installed.
+pub fn ffmpeg_available() -> Option<PathBuf> {
+    let bin = ffmpeg_bin();
+    Command::new(&bin)
+        .arg("-version")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|_| bin)
+}
+
 /// The concat target: the highest sample rate among the takes (the better
 /// takes lose nothing; the lower-rate ones get upsampled).
 fn pick_target(specs: &[hound::WavSpec]) -> hound::WavSpec {
@@ -52,6 +65,20 @@ fn normalize_rates(inputs: &[PathBuf], progress: &dyn Fn(&str)) -> Result<Vec<Pa
     if specs.iter().all(|s| *s == target) {
         return Ok(inputs.to_vec());
     }
+    let Some(ffmpeg) = ffmpeg_available() else {
+        let mut rates: Vec<u32> = specs.iter().map(|s| s.sample_rate).collect();
+        rates.sort_unstable();
+        rates.dedup();
+        bail!(
+            "takes were recorded at mixed sample rates ({} Hz) — resampling needs \
+             ffmpeg (brew install ffmpeg), or re-record the minority takes on one device",
+            rates
+                .iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<_>>()
+                .join(" / ")
+        );
+    };
     let codec = match target.bits_per_sample {
         16 => "pcm_s16le",
         32 => "pcm_s32le",
@@ -68,7 +95,7 @@ fn normalize_rates(inputs: &[PathBuf], progress: &dyn Fn(&str)) -> Result<Vec<Pa
             continue;
         }
         let dest = tmp.join(format!("rs{i:03}.wav"));
-        let status = Command::new(ffmpeg_bin())
+        let status = Command::new(&ffmpeg)
             .args([
                 "-y",
                 "-v",
@@ -187,7 +214,7 @@ pub fn export(
     episode_dir: &Path,
     session: &Session,
     allow_partial: bool,
-) -> Result<(PathBuf, PathBuf)> {
+) -> Result<(PathBuf, Option<PathBuf>)> {
     let missing = session
         .passages
         .iter()
@@ -218,28 +245,34 @@ pub fn export(
     let wav_out = narration.join("voice.wav");
     wav::concat_wavs(&inputs, GAP_MS, &wav_out)?;
 
-    emit(app, "ENCODE ▸ voice.mp3");
-    let mp3_out = narration.join("voice.mp3");
-    let status = Command::new(ffmpeg_bin())
-        .args([
-            "-y",
-            "-v",
-            "error",
-            "-i",
-            wav_out.to_str().unwrap(),
-            "-ar",
-            "44100",
-            "-ac",
-            "1",
-            "-b:a",
-            "192k",
-            mp3_out.to_str().unwrap(),
-        ])
-        .status()
-        .map_err(|e| anyhow!("ffmpeg launch failed: {e}"))?;
-    if !status.success() {
-        bail!("ffmpeg exited with {status}");
-    }
+    let mp3_out = if let Some(ffmpeg) = ffmpeg_available() {
+        emit(app, "ENCODE ▸ voice.mp3");
+        let mp3 = narration.join("voice.mp3");
+        let status = Command::new(ffmpeg)
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                wav_out.to_str().unwrap(),
+                "-ar",
+                "44100",
+                "-ac",
+                "1",
+                "-b:a",
+                "192k",
+                mp3.to_str().unwrap(),
+            ])
+            .status()
+            .map_err(|e| anyhow!("ffmpeg launch failed: {e}"))?;
+        if !status.success() {
+            bail!("ffmpeg exited with {status}");
+        }
+        Some(mp3)
+    } else {
+        emit(app, "NO FFMPEG ▸ voice.wav only (brew install ffmpeg for mp3)");
+        None
+    };
 
     emit(app, "SEALED");
     Ok((wav_out, mp3_out))

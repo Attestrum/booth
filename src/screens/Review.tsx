@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { exportSession, onExportProgress } from "../lib/ipc";
+import { exportSession, ffmpegStatus, onExportProgress } from "../lib/ipc";
 import { playSfx } from "../lib/sfx";
 import { useKeymap } from "../hooks/useKeymap";
 import { GlitchFlash } from "../components/GlitchFlash";
@@ -13,7 +13,7 @@ const fmt = (s: number) =>
 type ExportState =
   | { phase: "idle" }
   | { phase: "running"; log: string[] }
-  | { phase: "sealed"; log: string[]; wav: string; mp3: string }
+  | { phase: "sealed"; log: string[]; wav: string; mp3: string | null }
   | { phase: "error"; log: string[]; message: string };
 
 // Screen 3 — REVIEW ledger + export. J/K move, Enter/click jumps to that
@@ -32,6 +32,10 @@ export function Review({
   const [exp, setExp] = useState<ExportState>({ phase: "idle" });
   const [sealFlash, setSealFlash] = useState(0);
   const [sel, setSel] = useState(session.cursor);
+  const [hasFfmpeg, setHasFfmpeg] = useState<boolean | null>(null);
+  useEffect(() => {
+    ffmpegStatus().then(setHasFfmpeg).catch(() => setHasFfmpeg(null));
+  }, []);
   const listRef = useRef<HTMLDivElement>(null);
   const expRef = useRef(exp);
   expRef.current = exp;
@@ -199,6 +203,11 @@ export function Review({
         </span>
         <span>{recorded.reduce((s, p) => s + p.takes.length, 0)} TAKES</span>
         <span>≈ {fmt(runtime)} RUNTIME</span>
+        {hasFfmpeg === false && (
+          <span style={{ color: "var(--amber)", opacity: 0.85 }}>
+            NO FFMPEG — WAV-ONLY EXPORT (brew install ffmpeg for mp3)
+          </span>
+        )}
       </div>
 
       {/* export status */}
@@ -239,7 +248,7 @@ export function Review({
                 </GlitchFlash>
               </div>
               <div style={{ color: "var(--dim-cyan)" }}>{exp.wav}</div>
-              <div style={{ color: "var(--dim-cyan)" }}>{exp.mp3}</div>
+              {exp.mp3 && <div style={{ color: "var(--dim-cyan)" }}>{exp.mp3}</div>}
             </>
           )}
           {exp.phase === "error" && (
