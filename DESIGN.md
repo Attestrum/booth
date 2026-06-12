@@ -19,7 +19,8 @@ Every node lists every exit. Buttons and keys are the same transitions (buttons 
 flowchart TD
     PO["POWER-ON\n(press any key / click)"] -->|"1.5s CRT sequence"| LOAD
 
-    LOAD["LOAD — episode list\nresumable sessions first"]
+    LOAD["LOAD — recent project folders,\nresumable sessions first per folder\n(first run: empty state + OPEN FOLDER)"]
+    LOAD -->|"O / OPEN FOLDER…\n(native dialog → recents)"| LOAD
     LOAD -->|"Enter / click row\n(no session.json → fresh)"| GROUP
     LOAD -->|"Enter / click row\n(session.json exists → resume)"| BOOTH
     LOAD -->|"R / RESCAN button"| LOAD
@@ -46,10 +47,14 @@ flowchart TD
 live exit is STOP). REVIEW row-jump sets `session.cursor` before switching. Cmd+Q (native) is
 always available; a quit mid-take is recovered on next launch (diagram 4).
 
-**Episodes root:** LOAD scans the **hardcoded** workspace path `~/dev/Attestrum-youtube/episodes`
-(moved out of `~/Documents` 2026-06-12). Three places must stay in sync when it changes:
-`src-tauri/src/lib.rs` `episodes_root()`, the `assetProtocol` scope in
-`src-tauri/tauri.conf.json`, and the ep001 test path in `src-tauri/src/session.rs`.
+**Project model (replaced the hardcoded episodes root, 2026-06-12):** LOAD lists sessions found
+under the user's **recent project folders** (persisted as `config.json` in the OS app-config dir,
+newest first, capped at 8 — `src-tauri/src/config.rs`). A project folder is either a single
+script's folder or a folder whose immediate subfolders are episodes; `session::scan` checks the
+root itself plus one level down, and `session::list_candidates` lists fresh openables (folders
+with a parseable `narration/` script but no session). Asset-protocol access for take playback is
+granted **per opened folder at runtime** (`asset_protocol_scope().allow_directory`) — the static
+scope in `tauri.conf.json` is empty by design.
 
 ## 2. Booth interaction states
 
@@ -185,11 +190,13 @@ classDiagram
         format: AudioFormat | null  // latest take's format (display only)
         units: ScriptUnit[]         // snapshot; text editable in-booth —
                                     // edits propagate to script-units.json
-                                    // + completed-videos/&lt;slug&gt;/script.md
+                                    // + the linked sourceFile document
         passages: Passage[]
         cursor: number
         createdAt: ISO string
         device: string | null
+        sourceFile: string | null   // imported document (write-back target;
+                                    // absent on pre-project-model sessions)
     }
     class Passage {
         unitStart: number  // inclusive
@@ -245,5 +252,6 @@ on take-less passages; `cursor` is always clamped to a valid index.
 | 15 | Transcript screen selection didn't carry into the booth — select row 1, BEGIN, land on the OLD cursor's passage (sel was local state, never written to `session.cursor`) | wrong passage | `begin()` saves `cursor = sel` before switching screens |
 | 16 | Script text was read-only in the booth — wording tweaks meant editing files by hand | founder directive | click the teleprompter text (idle only) → inline textarea, one paragraph per unit; SAVE button (greyed until the draft changes) + always-active CANCEL, or ⌘S; propagates each changed unit to session.json, `script-units.json`, and `completed-videos/<slug>/script.md` (exact-match replace; warnings on the amber chip if a target is missing); Esc/CANCEL discards immediately; click-outside exits silently when clean, but a dirty draft pops SAVE CHANGES? (Save ⏎ / Discard esc) — never a silent data loss |
 | 17 | Control bar overflowed again when VIEW TRANSCRIPT widened it (fixed px button metrics assumed short labels + wide window) | REVIEW clipped | button metrics viewport-scaled via `clamp()` (`.btn`, `.control-bar`, REC); key hints hide below 1340 px (keys still work) |
+| 18 | App was unusable off the author's machine — episodes root, asset scope, and the edit write-back sink were all hardcoded to one workspace | OSS-blocking | project model: recents + OPEN FOLDER (config.rs), runtime asset-scope grants, `session.sourceFile` write-back target (legacy completed-videos sink removed) |
 
 Future gaps: add the transition to the diagram FIRST, then implement, then append a row here.

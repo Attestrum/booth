@@ -1,4 +1,5 @@
 mod audio;
+mod config;
 mod export;
 mod script;
 mod session;
@@ -10,12 +11,6 @@ use session::{Session, SessionSummary, Take};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Manager;
-
-/// This is a personal tool for one workspace; episodes always live here.
-fn episodes_root() -> PathBuf {
-    let home = std::env::var("HOME").expect("HOME not set");
-    Path::new(&home).join("dev/Attestrum-youtube/episodes")
-}
 
 /// The take in flight: (episode_dir, passage, wav path). One at a time.
 struct RecordingState(Mutex<Option<(PathBuf, usize, PathBuf)>>);
@@ -33,28 +28,47 @@ fn current_device() -> Result<DeviceInfo, String> {
 }
 
 #[tauri::command]
-fn scan_sessions() -> Vec<SessionSummary> {
-    session::scan(&episodes_root())
+fn get_recents(app: tauri::AppHandle) -> Vec<String> {
+    config::load(&app)
+        .recents
+        .into_iter()
+        .filter(|r| Path::new(r).is_dir())
+        .collect()
 }
 
 #[tauri::command]
-fn list_episodes() -> Vec<String> {
-    let Ok(entries) = std::fs::read_dir(episodes_root()) else {
-        return Vec::new();
-    };
-    let mut dirs: Vec<String> = entries
-        .flatten()
-        .filter(|e| e.path().is_dir())
-        .map(|e| e.path().to_string_lossy().into_owned())
-        .collect();
-    dirs.sort();
-    dirs
+fn add_project(app: tauri::AppHandle, dir: String) -> Result<Vec<String>, String> {
+    if !Path::new(&dir).is_dir() {
+        return Err(format!("not a folder: {dir}"));
+    }
+    config::add_recent(&app, &dir)
+        .map(|c| c.recents)
+        .map_err(|e| format!("{e:#}"))
 }
 
 #[tauri::command]
-fn open_episode(dir: String, now_iso: String) -> Result<OpenResult, String> {
-    let (session, fresh) =
-        session::open(Path::new(&dir), now_iso).map_err(|e| format!("{e:#}"))?;
+fn scan_sessions(root: String) -> Vec<SessionSummary> {
+    session::scan(Path::new(&root))
+}
+
+#[tauri::command]
+fn list_episodes(root: String) -> Vec<String> {
+    session::list_candidates(Path::new(&root))
+}
+
+#[tauri::command]
+fn open_episode(
+    app: tauri::AppHandle,
+    dir: String,
+    now_iso: String,
+) -> Result<OpenResult, String> {
+    let path = Path::new(&dir);
+    // playback streams take WAVs through the asset protocol; access is granted
+    // per opened folder at runtime — there is no static scope in tauri.conf.json
+    app.asset_protocol_scope()
+        .allow_directory(path, true)
+        .map_err(|e| e.to_string())?;
+    let (session, fresh) = session::open(path, now_iso).map_err(|e| format!("{e:#}"))?;
     Ok(OpenResult { session, fresh })
 }
 
@@ -205,6 +219,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             current_device,
+            get_recents,
+            add_project,
             scan_sessions,
             list_episodes,
             open_episode,

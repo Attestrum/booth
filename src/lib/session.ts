@@ -29,12 +29,13 @@ export interface Session {
   schema: 1;
   episode: string; // episode folder name
   source: string; // which file the units came from
-  format: AudioFormat | null; // pinned on first recording
+  format: AudioFormat | null; // latest take's format (display only)
   units: ScriptUnit[];
   passages: Passage[];
   cursor: number; // current passage index
   createdAt: string;
   device: string | null;
+  sourceFile?: string | null; // imported document — inline-edit write-back target
 }
 
 export const passageText = (s: Session, p: Passage): string =>

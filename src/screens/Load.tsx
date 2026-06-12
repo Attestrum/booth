@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { listEpisodes, openEpisode, scanSessions } from "../lib/ipc";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import {
+  addProject,
+  getRecents,
+  listEpisodes,
+  openEpisode,
+  scanSessions,
+} from "../lib/ipc";
 import type { SessionSummary } from "../lib/ipc";
 import { playSfx } from "../lib/sfx";
 import { useKeymap } from "../hooks/useKeymap";
@@ -9,41 +16,70 @@ import type { Session } from "../lib/session";
 interface Row {
   dir: string;
   name: string;
+  root: string; // the recent project folder this row was found under
   summary?: SessionSummary; // present = resumable
 }
 
-// Screen 1 — LOAD: resumable sessions first, then fresh episodes.
-// J/K + Enter, rows clickable, R rescans (list refreshes on every entry).
+// Screen 1 — LOAD: recent project folders, resumable sessions first within
+// each. O opens a new folder, J/K + Enter, rows clickable, R rescans.
+// First run shows an empty state with OPEN FOLDER.
 export function Load({
   onOpen,
 }: {
   onOpen: (dir: string, s: Session, fresh: boolean) => void;
 }) {
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rows, setRows] = useState<Row[] | null>(null); // null = scanning
   const [sel, setSel] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const rescan = useCallback(async () => {
-    const [sessions, episodes] = await Promise.all([
-      scanSessions(),
-      listEpisodes(),
-    ]);
-    const byDir = new Map(sessions.map((s) => [s.episodeDir, s]));
-    const resumable: Row[] = sessions.map((s) => ({
-      dir: s.episodeDir,
-      name: s.episode,
-      summary: s,
-    }));
-    const fresh: Row[] = episodes
-      .filter((dir) => !byDir.has(dir))
-      .map((dir) => ({ dir, name: dir.split("/").pop() ?? dir }));
-    setRows([...resumable, ...fresh]);
-    setSel((s) => Math.min(s, resumable.length + fresh.length - 1));
+    const roots = await getRecents();
+    const all: Row[] = [];
+    for (const root of roots) {
+      const [sessions, episodes] = await Promise.all([
+        scanSessions(root),
+        listEpisodes(root),
+      ]);
+      const byDir = new Set(sessions.map((s) => s.episodeDir));
+      all.push(
+        ...sessions.map((s) => ({
+          dir: s.episodeDir,
+          name: s.episode,
+          root,
+          summary: s,
+        })),
+        ...episodes
+          .filter((dir) => !byDir.has(dir))
+          .map((dir) => ({
+            dir,
+            name: dir.split("/").pop() ?? dir,
+            root,
+          })),
+      );
+    }
+    setRows(all);
+    setSel((s) => Math.max(0, Math.min(s, all.length - 1)));
   }, []);
 
   useEffect(() => {
     rescan().catch((e) => setError(String(e)));
   }, [rescan]);
+
+  const openFolder = async () => {
+    try {
+      const dir = await openDialog({
+        directory: true,
+        title: "Open a project folder (your script's folder, or a folder of episodes)",
+      });
+      if (typeof dir !== "string") return;
+      await addProject(dir);
+      playSfx("toggle", 0.4);
+      await rescan();
+    } catch (e) {
+      playSfx("error");
+      setError(String(e));
+    }
+  };
 
   const open = async (row: Row) => {
     try {
@@ -56,14 +92,16 @@ export function Load({
     }
   };
 
+  const list = rows ?? [];
+
   useKeymap(
     {
       j: () => {
-        setSel((s) => Math.min(s + 1, rows.length - 1));
+        setSel((s) => Math.min(s + 1, list.length - 1));
         playSfx("nav", 0.25);
       },
       arrowdown: () => {
-        setSel((s) => Math.min(s + 1, rows.length - 1));
+        setSel((s) => Math.min(s + 1, list.length - 1));
         playSfx("nav", 0.25);
       },
       k: () => {
@@ -74,16 +112,20 @@ export function Load({
         setSel((s) => Math.max(s - 1, 0));
         playSfx("nav", 0.25);
       },
+      o: () => void openFolder(),
       r: () => {
         playSfx("nav", 0.3);
         void rescan().catch((e) => setError(String(e)));
       },
       enter: () => {
-        if (rows[sel]) void open(rows[sel]);
+        if (list[sel]) void open(list[sel]);
       },
     },
     [rows, sel],
   );
+
+  const shortRoot = (root: string) =>
+    root.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
 
   return (
     <div className="screen" style={{ padding: "72px 90px 32px" }}>
@@ -99,52 +141,102 @@ export function Load({
       </div>
 
       <div style={{ overflowY: "auto", flex: 1 }}>
-        {rows.map((row, i) => {
+        {list.map((row, i) => {
           const active = i === sel;
           const s = row.summary;
+          const newRoot = i === 0 || list[i - 1].root !== row.root;
           return (
-            <div
-              key={row.dir}
-              className="load-row"
-              data-autopilot={`row-${i}`}
-              onClick={() => {
-                setSel(i);
-                void open(row);
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 24,
-                padding: "14px 18px",
-                marginBottom: 6,
-                border: `1px solid ${active ? "var(--dim-cyan)" : "var(--faint-cyan)"}`,
-                background: active ? "var(--faint-cyan)" : "transparent",
-                color: active ? "var(--cyan)" : "var(--dim-cyan)",
-                textShadow: active ? "0 0 12px var(--dim-cyan)" : "none",
-              }}
-            >
-              <span style={{ fontSize: 11, letterSpacing: "0.2em", width: 70 }}>
-                {s ? "RESUME" : "NEW"}
-              </span>
-              <span style={{ flex: 1, letterSpacing: "0.08em", fontSize: 15 }}>
-                {row.name}
-              </span>
-              {s && (
-                <>
-                  <Progress done={s.recorded} total={s.total} />
-                  <span style={{ fontSize: 11, width: 110, textAlign: "right" }}>
-                    {s.recorded}/{s.total} · {s.takes} takes
-                  </span>
-                </>
+            <div key={row.dir}>
+              {newRoot && (
+                <div
+                  style={{
+                    color: "var(--faint-cyan)",
+                    fontSize: 10,
+                    letterSpacing: "0.25em",
+                    margin: "14px 0 8px",
+                    borderBottom: "1px solid var(--faint-cyan)",
+                    paddingBottom: 4,
+                  }}
+                >
+                  {shortRoot(row.root).toUpperCase()}
+                </div>
               )}
-              <span className="load-row-open" style={{ fontSize: 11 }}>
-                OPEN ▸
-              </span>
+              <div
+                className="load-row"
+                data-autopilot={`row-${i}`}
+                onClick={() => {
+                  setSel(i);
+                  void open(row);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 24,
+                  padding: "14px 18px",
+                  marginBottom: 6,
+                  border: `1px solid ${active ? "var(--dim-cyan)" : "var(--faint-cyan)"}`,
+                  background: active ? "var(--faint-cyan)" : "transparent",
+                  color: active ? "var(--cyan)" : "var(--dim-cyan)",
+                  textShadow: active ? "0 0 12px var(--dim-cyan)" : "none",
+                }}
+              >
+                <span style={{ fontSize: 11, letterSpacing: "0.2em", width: 70 }}>
+                  {s ? "RESUME" : "NEW"}
+                </span>
+                <span style={{ flex: 1, letterSpacing: "0.08em", fontSize: 15 }}>
+                  {row.name}
+                </span>
+                {s && (
+                  <>
+                    <Progress done={s.recorded} total={s.total} />
+                    <span style={{ fontSize: 11, width: 110, textAlign: "right" }}>
+                      {s.recorded}/{s.total} · {s.takes} takes
+                    </span>
+                  </>
+                )}
+                <span className="load-row-open" style={{ fontSize: 11 }}>
+                  OPEN ▸
+                </span>
+              </div>
             </div>
           );
         })}
-        {rows.length === 0 && !error && (
+        {rows === null && !error && (
           <div style={{ color: "var(--faint-cyan)" }}>scanning…</div>
+        )}
+        {rows !== null && list.length === 0 && !error && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 18,
+              marginTop: 80,
+            }}
+          >
+            <div
+              style={{
+                color: "var(--dim-cyan)",
+                fontSize: 13,
+                letterSpacing: "0.2em",
+              }}
+            >
+              NO PROJECTS YET
+            </div>
+            <div
+              style={{
+                color: "var(--faint-cyan)",
+                fontSize: 12,
+                lineHeight: 1.6,
+                maxWidth: 460,
+                textAlign: "center",
+              }}
+            >
+              Open the folder that holds your script (or a folder of episode
+              folders). Booth keeps its sessions and exports next to it.
+            </div>
+            <Btn id="open-folder-empty" label="Open Folder…" hint="o" onClick={() => void openFolder()} />
+          </div>
         )}
       </div>
 
@@ -159,6 +251,7 @@ export function Load({
           display: "flex",
           alignItems: "center",
           marginTop: 20,
+          gap: 10,
         }}
       >
         <span
@@ -171,6 +264,7 @@ export function Load({
           J/K NAVIGATE · ENTER / CLICK OPEN
         </span>
         <span style={{ flex: 1 }} />
+        <Btn id="open-folder" label="Open Folder…" hint="o" onClick={() => void openFolder()} />
         <Btn
           id="rescan"
           label="Rescan"

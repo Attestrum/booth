@@ -23,9 +23,16 @@ export interface DeviceInfo {
   sampleRate: number;
 }
 
+// ---- projects ----
+export const getRecents = () => invoke<string[]>("get_recents");
+export const addProject = (dir: string) =>
+  invoke<string[]>("add_project", { dir });
+
 // ---- session/script ----
-export const scanSessions = () => invoke<SessionSummary[]>("scan_sessions");
-export const listEpisodes = () => invoke<string[]>("list_episodes");
+export const scanSessions = (root: string) =>
+  invoke<SessionSummary[]>("scan_sessions", { root });
+export const listEpisodes = (root: string) =>
+  invoke<string[]>("list_episodes", { root });
 export const openEpisode = (dir: string) =>
   invoke<{ session: Session; fresh: boolean }>("open_episode", {
     dir,

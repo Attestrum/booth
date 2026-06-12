@@ -46,6 +46,11 @@ pub struct Session {
     pub cursor: usize,
     pub created_at: String,
     pub device: Option<String>,
+    /// Absolute path of the document this session's script was imported from
+    /// (inline-edit write-back target). Absent on sessions made before the
+    /// project model and on sessions opened from pre-built units files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_file: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -122,6 +127,7 @@ pub fn open(episode_dir: &Path, now_iso: String) -> Result<(Session, bool)> {
         cursor: 0,
         created_at: now_iso,
         device: None,
+        source_file: None,
     };
     save(episode_dir, &s)?;
     Ok((s, true))
@@ -145,18 +151,16 @@ fn recover_takes(episode_dir: &Path, session: &mut Session) -> Result<()> {
     Ok(())
 }
 
-/// Scan all episodes for resumable sessions.
-pub fn scan(episodes_root: &Path) -> Vec<SessionSummary> {
+/// Scan a project folder for resumable sessions: the folder itself, plus its
+/// immediate subfolders (a project can be one script's folder or a folder of
+/// episode folders).
+pub fn scan(root: &Path) -> Vec<SessionSummary> {
     let mut out = Vec::new();
-    let Ok(entries) = fs::read_dir(episodes_root) else {
-        return out;
-    };
-    for entry in entries.flatten() {
-        let dir = entry.path();
-        if !dir.is_dir() {
-            continue;
+    let mut consider = |dir: &Path| {
+        if !session_path(dir).exists() {
+            return;
         }
-        if let Ok(s) = load(&dir) {
+        if let Ok(s) = load(dir) {
             out.push(SessionSummary {
                 episode_dir: dir.to_string_lossy().into_owned(),
                 episode: s.episode.clone(),
@@ -165,8 +169,41 @@ pub fn scan(episodes_root: &Path) -> Vec<SessionSummary> {
                 takes: s.passages.iter().map(|p| p.takes.len()).sum(),
             });
         }
+    };
+    consider(root);
+    if let Ok(entries) = fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if dir.is_dir() {
+                consider(&dir);
+            }
+        }
     }
     out.sort_by(|a, b| a.episode.cmp(&b.episode));
+    out
+}
+
+/// Folders at or under `root` (one level) that booth can open fresh: they
+/// carry a parseable narration script but no session yet.
+pub fn list_candidates(root: &Path) -> Vec<String> {
+    let openable = |d: &Path| {
+        !session_path(d).exists()
+            && (d.join("narration/script-units.json").exists()
+                || d.join("narration/chunks.json").exists())
+    };
+    let mut out = Vec::new();
+    if openable(root) {
+        out.push(root.to_string_lossy().into_owned());
+    }
+    if let Ok(entries) = fs::read_dir(root) {
+        for e in entries.flatten() {
+            let d = e.path();
+            if d.is_dir() && openable(&d) {
+                out.push(d.to_string_lossy().into_owned());
+            }
+        }
+    }
+    out.sort();
     out
 }
 
@@ -327,6 +364,7 @@ mod tests {
             cursor: 0,
             created_at: "2026-06-12T00:00:00Z".into(),
             device: None,
+            source_file: None,
         };
         // mid-stack delete: order preserved, accepted top take untouched
         let t = discard_at(&tmp, &mut s, 0, 1).unwrap();
@@ -349,36 +387,34 @@ mod tests {
     fn edit_unit_text_propagates_to_units_file_and_md() {
         let root = std::env::temp_dir().join("booth-session-test/edit-root");
         let _ = fs::remove_dir_all(&root);
-        let ep = root.join("episodes/ep997-foo-bar");
+        let ep = root.join("my-video");
         fs::create_dir_all(ep.join("narration")).unwrap();
-        fs::create_dir_all(root.join("completed-videos/foo-bar")).unwrap();
         fs::write(
             ep.join("narration/script-units.json"),
             r#"[{"text":"The first sentence.","cue":"[VISUAL: a]","chapter":"CH1"},
                 {"text":"The second sentence.","cue":"[VISUAL: b]","chapter":"CH1"}]"#,
         )
         .unwrap();
-        fs::write(
-            root.join("completed-videos/foo-bar/script.md"),
-            "# Script\n\nThe first sentence. The second sentence.\n",
-        )
-        .unwrap();
+        let doc = root.join("my-video/script.md");
+        fs::write(&doc, "# Script\n\nThe first sentence. The second sentence.\n").unwrap();
 
         let (mut s, _) = open(&ep, "2026-06-12T00:00:00Z".into()).unwrap();
+        s.source_file = Some(doc.to_string_lossy().into_owned());
         let warns =
             edit_unit_text(&ep, &mut s, 1, "A rewritten second sentence.".into()).unwrap();
         assert!(warns.is_empty(), "no warnings expected, got {warns:?}");
         assert_eq!(s.units[1].text, "A rewritten second sentence.");
 
-        // parse source updated (cue survives), session.json persisted
+        // parse source updated (cue survives), session.json persisted with the link
         let raw = fs::read_to_string(ep.join("narration/script-units.json")).unwrap();
         assert!(raw.contains("A rewritten second sentence."));
         assert!(raw.contains("[VISUAL: b]"));
         let reloaded = load(&ep).unwrap();
         assert_eq!(reloaded.units[1].text, "A rewritten second sentence.");
+        assert_eq!(reloaded.source_file.as_deref(), Some(doc.to_str().unwrap()));
 
-        // canonical md updated by exact replace
-        let md = fs::read_to_string(root.join("completed-videos/foo-bar/script.md")).unwrap();
+        // linked source document updated by exact replace
+        let md = fs::read_to_string(&doc).unwrap();
         assert!(md.contains("The first sentence. A rewritten second sentence."));
 
         // error paths: bad index, empty text; unchanged text is a silent no-op
@@ -390,12 +426,11 @@ mod tests {
     }
 }
 
-/// Edit one unit's text in place and propagate to the on-disk sources
-/// (founder 2026-06-12): the units file this session was parsed from
-/// (narration/script-units.json or chunks.json) and the canonical transcript
-/// at completed-videos/<slug>/script.md (exact-match replace, first
-/// occurrence). Returns warnings for propagation targets it could not update;
-/// the session itself always updates.
+/// Edit one unit's text in place and propagate to the on-disk sources: the
+/// units file this session was parsed from (narration/script-units.json or
+/// chunks.json) and the session's linked `source_file` document (exact-match
+/// replace, first occurrence). Returns warnings for propagation targets it
+/// could not update; the session itself always updates.
 pub fn edit_unit_text(
     episode_dir: &Path,
     session: &mut Session,
@@ -444,32 +479,19 @@ pub fn edit_unit_text(
         Err(e) => warnings.push(format!("{}: {e:#}", session.source)),
     }
 
-    // 2. the canonical transcript md (episodes/epNNN-<slug> → completed-videos/<slug>)
-    let slug = episode_dir
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .map(|n| match n.split_once('-') {
-            Some((pre, rest)) if pre.starts_with("ep") && pre[2..].chars().all(|c| c.is_ascii_digit()) => {
-                rest.to_string()
-            }
-            _ => n,
-        })
-        .unwrap_or_default();
-    let md = episode_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|root| root.join("completed-videos").join(&slug).join("script.md"));
-    match md {
-        Some(md) if md.exists() => match fs::read_to_string(&md) {
+    // 2. the linked source document (set at import / migration)
+    match session.source_file.as_deref().map(PathBuf::from) {
+        Some(doc) if doc.exists() => match fs::read_to_string(&doc) {
             Ok(raw) if raw.contains(&old) => {
-                if let Err(e) = fs::write(&md, raw.replacen(&old, &new_text, 1)) {
-                    warnings.push(format!("script.md: {e}"));
+                if let Err(e) = fs::write(&doc, raw.replacen(&old, &new_text, 1)) {
+                    warnings.push(format!("source file: {e}"));
                 }
             }
-            Ok(_) => warnings.push("old text not found in script.md".into()),
-            Err(e) => warnings.push(format!("script.md: {e}")),
+            Ok(_) => warnings.push("old text not found in the source file".into()),
+            Err(e) => warnings.push(format!("source file: {e}")),
         },
-        _ => warnings.push(format!("no script.md for '{slug}' in completed-videos/")),
+        Some(doc) => warnings.push(format!("source file missing: {}", doc.display())),
+        None => { /* no linked document — units file update above is the full propagation */ }
     }
 
     Ok(warnings)
