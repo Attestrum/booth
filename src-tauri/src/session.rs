@@ -398,6 +398,7 @@ mod tests {
         let (dir, s, fresh) = import_document(&md, "2026-06-12T00:00:00Z".into()).unwrap();
         assert!(fresh);
         assert_eq!(dir, root);
+        assert_eq!(s.episode, "my-script", "session is named after the document");
         assert_eq!(s.source_file.as_deref(), Some(md.to_str().unwrap()));
         assert_eq!(s.units.len(), 3);
         assert_eq!(s.units[0].chapter, "Intro");
@@ -502,6 +503,11 @@ pub fn import_document(src: &Path, now_iso: String) -> Result<(PathBuf, Session,
     )?;
     let (mut session, fresh) = open(&dir, now_iso)?;
     session.source_file = Some(src.to_string_lossy().into_owned());
+    // name the session after the DOCUMENT, not its folder — importing from
+    // ~/Downloads must not produce a session called "Downloads"
+    if let Some(stem) = src.file_stem() {
+        session.episode = stem.to_string_lossy().into_owned();
+    }
     save(&dir, &session)?;
     Ok((dir, session, fresh))
 }

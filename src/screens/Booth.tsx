@@ -510,10 +510,11 @@ export function Booth({
           )}
           <div
             style={{
-              color: "var(--faint-cyan)",
+              color: "var(--dim-cyan)",
               fontSize: 11,
               letterSpacing: "0.15em",
               marginBottom: 8,
+              textShadow: "0 0 8px rgba(127, 224, 255, 0.25)",
             }}
           >
             {recorded}/{session.passages.length} RECORDED

@@ -25,16 +25,17 @@ export function TakeStack({
     <div style={{ width: 240 }}>
       <div
         style={{
-          color: "var(--faint-cyan)",
+          color: "var(--dim-cyan)",
           fontSize: 10,
           letterSpacing: "0.3em",
           marginBottom: 8,
+          textShadow: "0 0 8px rgba(127, 224, 255, 0.25)",
         }}
       >
         TAKES
       </div>
       {takes.length === 0 && (
-        <div style={{ color: "var(--faint-cyan)", fontSize: 12 }}>— none —</div>
+        <div style={{ color: "var(--dim-cyan)", fontSize: 12 }}>— none —</div>
       )}
       {takes.map((t, i) => {
         const top = i === 0;
