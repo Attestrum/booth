@@ -1,0 +1,60 @@
+# Tag-triggered release: build, Developer-ID-sign, notarize, staple, and
+# attach the .dmg to a draft GitHub Release. tauri-cli handles the keychain
+# import, codesign (hardened runtime + entitlements), notarytool --wait, and
+# stapling itself — the secrets below are all it needs.
+#
+# Required repo secrets:
+#   APPLE_CERTIFICATE            base64 of the Developer ID Application .p12
+#   APPLE_CERTIFICATE_PASSWORD   the .p12 export password
+#   APPLE_SIGNING_IDENTITY       "Developer ID Application: <name> (<team>)"
+#   APPLE_API_ISSUER             App Store Connect API Issuer ID (UUID)
+#   APPLE_API_KEY                App Store Connect API Key ID (10 chars)
+#   APPLE_API_KEY_CONTENT        contents of AuthKey_<KEYID>.p8
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    timeout-minutes: 90 # first-ever notarization for a team can be slow
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Write App Store Connect API key
+        run: printf '%s' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/AuthKey.p8"
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+
+      - uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Attestrum Booth v__VERSION__"
+          releaseDraft: true
+          args: --target aarch64-apple-darwin

@@ -193,8 +193,14 @@ mod tests {
         let same = normalize_rates(&[a.clone(), b.clone()], &|_| {}).unwrap();
         assert_eq!(same, vec![a.clone(), b.clone()]);
 
-        // mixed: the 24k take is resampled to 48k (needs ffmpeg — local-only
-        // test box, same dependency the mp3 encode step already requires)
+        // mixed: the 24k take is resampled to 48k. ffmpeg is an optional
+        // runtime dependency — without it this half of the test would only
+        // see the clear mixed-rate error, so skip it (CI installs ffmpeg).
+        if ffmpeg_available().is_none() {
+            eprintln!("ffmpeg not installed; skipping the resample half");
+            assert!(normalize_rates(&[a.clone(), c.clone()], &|_| {}).is_err());
+            return;
+        }
         let mixed = normalize_rates(&[a.clone(), c.clone()], &|_| {}).unwrap();
         assert_eq!(mixed[0], a, "matching take untouched");
         assert_ne!(mixed[1], c, "minority take replaced by resampled temp");
