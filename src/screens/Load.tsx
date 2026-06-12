@@ -168,7 +168,7 @@ export function Load({
               {newRoot && (
                 <div
                   style={{
-                    color: "var(--faint-cyan)",
+                    color: "var(--dim-cyan)",
                     fontSize: 10,
                     letterSpacing: "0.25em",
                     margin: "14px 0 8px",
@@ -220,7 +220,7 @@ export function Load({
           );
         })}
         {rows === null && !error && (
-          <div style={{ color: "var(--faint-cyan)" }}>scanning…</div>
+          <div style={{ color: "var(--dim-cyan)" }}>scanning…</div>
         )}
         {rows !== null && list.length === 0 && !error && (
           <div
@@ -243,7 +243,7 @@ export function Load({
             </div>
             <div
               style={{
-                color: "var(--faint-cyan)",
+                color: "var(--dim-cyan)",
                 fontSize: 12,
                 lineHeight: 1.6,
                 maxWidth: 460,
@@ -284,7 +284,7 @@ export function Load({
       >
         <span
           style={{
-            color: "var(--faint-cyan)",
+            color: "var(--dim-cyan)",
             fontSize: 10,
             letterSpacing: "0.25em",
           }}

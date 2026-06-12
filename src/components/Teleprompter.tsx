@@ -142,7 +142,7 @@ export function Teleprompter({
       {!editing && showGhosts && prev && (
         <div
           style={{
-            color: "var(--faint-cyan)",
+            color: "var(--dim-cyan)",
             fontSize: 13,
             lineHeight: 1.5,
             maxHeight: 60,
@@ -228,7 +228,7 @@ export function Teleprompter({
                 marginTop: 8,
                 fontSize: 10,
                 letterSpacing: "0.2em",
-                color: "var(--faint-cyan)",
+                color: "var(--dim-cyan)",
               }}
             >
               <button
@@ -295,7 +295,7 @@ export function Teleprompter({
       {!editing && showGhosts && next && (
         <div
           style={{
-            color: "var(--faint-cyan)",
+            color: "var(--dim-cyan)",
             fontSize: 13,
             lineHeight: 1.5,
             maxHeight: 60,

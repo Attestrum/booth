@@ -149,7 +149,10 @@ export function Review({
                 gap: 16,
                 padding: "7px 10px",
                 fontSize: 12,
-                color: t ? "var(--dim-cyan)" : "var(--faint-cyan)",
+                // text floor is dim-cyan (never faint) — unrecorded rows
+                // step down via opacity instead
+                color: "var(--dim-cyan)",
+                opacity: t ? 1 : 0.65,
                 border: `1px solid ${active ? "var(--dim-cyan)" : "transparent"}`,
                 background: active ? "var(--faint-cyan)" : "transparent",
                 borderBottom: active
@@ -264,7 +267,7 @@ export function Review({
         <Btn id="booth" label="‹ Booth" hint="⇥/esc" onClick={onBack} />
         <span
           style={{
-            color: "var(--faint-cyan)",
+            color: "var(--dim-cyan)",
             fontSize: 10,
             letterSpacing: "0.22em",
             marginLeft: 8,

@@ -3,6 +3,9 @@
   --bg: #0a0e14;
   --green: #7fffb0;
   --dim-cyan: rgba(127, 224, 255, 0.45);
+  /* RULE (founder 2026-06-12): --faint-cyan is for BORDERS and FILLS only —
+     never text. The minimum readable text tier is --dim-cyan; de-emphasize
+     further with opacity on top of dim, not by dropping to faint. */
   --faint-cyan: rgba(127, 224, 255, 0.12);
   --amber: #e0a52e;
   --red: #ff6b6b;
@@ -361,7 +364,7 @@ body,
   background: transparent;
   border: none;
   color: var(--dim-cyan);
-  opacity: 0.55;
+  opacity: 0.8;
   font-family: inherit;
   font-size: 12px;
   line-height: 1;

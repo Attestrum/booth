@@ -134,7 +134,7 @@ export function Grouping({
       </div>
       <div
         style={{
-          color: "var(--faint-cyan)",
+          color: "var(--dim-cyan)",
           fontSize: 11,
           letterSpacing: "0.1em",
           marginBottom: 24,
@@ -253,7 +253,7 @@ export function Grouping({
       </div>
       <div
         style={{
-          color: "var(--faint-cyan)",
+          color: "var(--dim-cyan)",
           fontSize: 10,
           letterSpacing: "0.22em",
           marginTop: 10,

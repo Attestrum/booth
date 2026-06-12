@@ -89,7 +89,7 @@ export function HelpOverlay() {
         ))}
         <div
           style={{
-            color: "var(--faint-cyan)",
+            color: "var(--dim-cyan)",
             fontSize: 10,
             letterSpacing: "0.2em",
             marginTop: 16,
