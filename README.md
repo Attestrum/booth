@@ -44,7 +44,9 @@ left off.
 | `⌘E` / `⇧⌘E` | export / export partial |
 | `ESC` | back |
 
-Every key is also a visible button.
+Every key is also a visible button — the **KEY BINDINGS** button (or `?`)
+shows this table in-app. Click the **device name in the top rail** to switch
+recording input.
 
 ## Install
 
