@@ -72,6 +72,74 @@ fn open_episode(
     Ok(OpenResult { session, fresh })
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportResult {
+    dir: String,
+    session: Session,
+    fresh: bool,
+}
+
+/// Import a .md / .txt script: parse it to units, persist them as
+/// narration/script-units.json in the script's folder (the standard parse
+/// ladder + session machinery take over from there), link the session's
+/// sourceFile for inline-edit write-back, and remember the folder.
+#[tauri::command]
+fn import_script(
+    app: tauri::AppHandle,
+    path: String,
+    now_iso: String,
+) -> Result<ImportResult, String> {
+    let src = PathBuf::from(&path);
+    let ext = src
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let markdown = matches!(ext.as_str(), "md" | "markdown");
+    if !markdown && ext != "txt" {
+        return Err(format!(
+            "can't import .{ext} — bring a .md or .txt script (PDF/docx: export to one of those first)"
+        ));
+    }
+    let dir = src
+        .parent()
+        .ok_or("script file has no parent folder")?
+        .to_path_buf();
+    if session::scan(&dir).iter().any(|s| s.episode_dir == dir.to_string_lossy()) {
+        return Err(
+            "this folder already has a booth session — open it from the list instead \
+             (or remove its narration/booth/ to re-import)"
+                .into(),
+        );
+    }
+    let raw = std::fs::read_to_string(&src).map_err(|e| format!("read {path}: {e}"))?;
+    let units = script::units_from_document(&raw, markdown);
+    if units.is_empty() {
+        return Err("no readable text found in that file".into());
+    }
+    std::fs::create_dir_all(dir.join("narration")).map_err(|e| e.to_string())?;
+    std::fs::write(
+        dir.join("narration/script-units.json"),
+        serde_json::to_string_pretty(&units).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+
+    app.asset_protocol_scope()
+        .allow_directory(&dir, true)
+        .map_err(|e| e.to_string())?;
+    let (mut session, fresh) =
+        session::open(&dir, now_iso).map_err(|e| format!("{e:#}"))?;
+    session.source_file = Some(path.clone());
+    session::save(&dir, &session).map_err(|e| format!("{e:#}"))?;
+    let _ = config::add_recent(&app, &dir.to_string_lossy());
+
+    Ok(ImportResult {
+        dir: dir.to_string_lossy().into_owned(),
+        session,
+        fresh,
+    })
+}
+
 #[tauri::command]
 fn save_session(dir: String, session: Session) -> Result<(), String> {
     session::save(Path::new(&dir), &session).map_err(|e| format!("{e:#}"))
@@ -224,6 +292,7 @@ pub fn run() {
             scan_sessions,
             list_episodes,
             open_episode,
+            import_script,
             save_session,
             start_recording,
             stop_recording,

@@ -48,17 +48,101 @@ pub fn load_units(episode_dir: &Path) -> Result<(Vec<ScriptUnit>, String)> {
     bail!("no narration/script-units.json or narration/chunks.json in this folder")
 }
 
-/// Units from pasted raw text: blank-line paragraphs, sentence-split.
-#[allow(dead_code)] // paste-raw-text fallback, wired when the paste UI lands
-pub fn units_from_text(text: &str) -> Vec<ScriptUnit> {
-    text.split("\n\n")
-        .flat_map(|p| split_sentences(p))
-        .map(|text| ScriptUnit {
-            text,
+/// Units from an imported markdown / plain-text document.
+///
+/// Rules (conservative — the transcript screen is the repair tool):
+/// - blank-line paragraphs, each sentence-split into units
+/// - markdown only: `#`–`######` headings set the `chapter` for everything
+///   until the next heading; fenced ``` code blocks are skipped; light inline
+///   strip (emphasis markers, backticks, `[text](url)` → text, list/quote
+///   markers)
+/// - a paragraph that starts with `[VISUAL:` or `[CUE:` becomes the cue of
+///   the PRECEDING unit (works in .md and .txt — keeps cue-annotated scripts
+///   on the same import path)
+pub fn units_from_document(raw: &str, markdown: bool) -> Vec<ScriptUnit> {
+    let mut out: Vec<ScriptUnit> = Vec::new();
+    let mut chapter = String::new();
+    let mut para = String::new();
+    let mut in_fence = false;
+
+    let flush = |para: &mut String, chapter: &str, out: &mut Vec<ScriptUnit>| {
+        let text = para.trim().to_string();
+        para.clear();
+        if text.is_empty() {
+            return;
+        }
+        let upper = text.to_uppercase();
+        if upper.starts_with("[VISUAL:") || upper.starts_with("[CUE:") {
+            if let Some(last) = out.last_mut() {
+                last.cue = text;
+            }
+            return;
+        }
+        out.extend(split_sentences(&text).into_iter().map(|t| ScriptUnit {
+            text: t,
             cue: String::new(),
-            chapter: String::new(),
-        })
-        .collect()
+            chapter: chapter.to_string(),
+        }));
+    };
+
+    for line in raw.replace("\r\n", "\n").lines() {
+        let trimmed = line.trim();
+        if markdown && trimmed.starts_with("```") {
+            flush(&mut para, &chapter, &mut out);
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        if markdown && trimmed.starts_with('#') {
+            flush(&mut para, &chapter, &mut out);
+            chapter = trimmed.trim_start_matches('#').trim().to_string();
+            continue;
+        }
+        if trimmed.is_empty() {
+            flush(&mut para, &chapter, &mut out);
+            continue;
+        }
+        let cleaned = if markdown {
+            strip_md_inline(trimmed)
+        } else {
+            trimmed.to_string()
+        };
+        if !para.is_empty() {
+            para.push(' ');
+        }
+        para.push_str(&cleaned);
+    }
+    flush(&mut para, &chapter, &mut out);
+    out
+}
+
+/// Light markdown inline strip: list/quote markers, emphasis, backticks,
+/// `[text](url)` → text. Deliberately lossy-conservative — never drops words.
+fn strip_md_inline(line: &str) -> String {
+    let mut s = line;
+    for marker in ["- ", "* ", "+ ", "> "] {
+        if let Some(rest) = s.strip_prefix(marker) {
+            s = rest;
+            break;
+        }
+    }
+    let mut text = s.replace("**", "").replace("__", "").replace('`', "");
+    // [text](url) → text, repeated; ![alt](url) → alt
+    loop {
+        let Some(open) = text.find('[') else { break };
+        let Some(mid) = text[open..].find("](").map(|i| open + i) else { break };
+        let Some(close) = text[mid..].find(')').map(|i| mid + i) else { break };
+        let label = text[open + 1..mid].to_string();
+        let start = if open > 0 && text.as_bytes()[open - 1] == b'!' {
+            open - 1
+        } else {
+            open
+        };
+        text.replace_range(start..=close, &label);
+    }
+    text
 }
 
 fn split_sentences(text: &str) -> Vec<String> {
@@ -129,5 +213,52 @@ mod tests {
     fn sentence_split_basic() {
         let s = split_sentences("One two. Three! Four? Five");
         assert_eq!(s, vec!["One two.", "Three!", "Four?", "Five"]);
+    }
+
+    #[test]
+    fn markdown_import_chapters_cues_and_strip() {
+        let md = "\
+# Cold Open
+
+Before the boom there was a **crawler** copying the [web](https://example.com).
+It came from a tiny nonprofit.
+
+[VISUAL: anim:RadarSweep — recon scan]
+
+## The Archive
+
+```
+code blocks are skipped entirely
+```
+
+- A bulleted line still reads as `prose`.
+";
+        let units = units_from_document(md, true);
+        let texts: Vec<&str> = units.iter().map(|u| u.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            vec![
+                "Before the boom there was a crawler copying the web.",
+                "It came from a tiny nonprofit.",
+                "A bulleted line still reads as prose.",
+            ]
+        );
+        assert_eq!(units[0].chapter, "Cold Open");
+        assert_eq!(units[2].chapter, "The Archive");
+        // the cue paragraph attached to the unit before it
+        assert_eq!(units[1].cue, "[VISUAL: anim:RadarSweep — recon scan]");
+        assert!(units[0].cue.is_empty());
+    }
+
+    #[test]
+    fn txt_import_plain_paragraphs() {
+        let txt = "First sentence. Second sentence!\n\nNew paragraph here.";
+        let units = units_from_document(txt, false);
+        let texts: Vec<&str> = units.iter().map(|u| u.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            vec!["First sentence.", "Second sentence!", "New paragraph here."]
+        );
+        assert!(units.iter().all(|u| u.chapter.is_empty()));
     }
 }

@@ -40,6 +40,11 @@ export const openEpisode = (dir: string) =>
   });
 export const saveSession = (dir: string, session: Session) =>
   invoke<void>("save_session", { dir, session });
+export const importScript = (path: string) =>
+  invoke<{ dir: string; session: Session; fresh: boolean }>("import_script", {
+    path,
+    nowIso: new Date().toISOString(),
+  });
 
 // ---- audio ----
 export const currentDevice = () => invoke<DeviceInfo>("current_device");

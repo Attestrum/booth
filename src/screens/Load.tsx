@@ -3,6 +3,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   addProject,
   getRecents,
+  importScript,
   listEpisodes,
   openEpisode,
   scanSessions,
@@ -92,6 +93,22 @@ export function Load({
     }
   };
 
+  const importFile = async () => {
+    try {
+      const file = await openDialog({
+        title: "Import a script (.md / .txt)",
+        filters: [{ name: "Scripts", extensions: ["md", "markdown", "txt"] }],
+      });
+      if (typeof file !== "string") return;
+      const { dir, session, fresh } = await importScript(file);
+      playSfx("toggle");
+      onOpen(dir, session, fresh);
+    } catch (e) {
+      playSfx("error");
+      setError(String(e));
+    }
+  };
+
   const list = rows ?? [];
 
   useKeymap(
@@ -113,6 +130,7 @@ export function Load({
         playSfx("nav", 0.25);
       },
       o: () => void openFolder(),
+      i: () => void importFile(),
       r: () => {
         playSfx("nav", 0.3);
         void rescan().catch((e) => setError(String(e)));
@@ -232,10 +250,20 @@ export function Load({
                 textAlign: "center",
               }}
             >
-              Open the folder that holds your script (or a folder of episode
-              folders). Booth keeps its sessions and exports next to it.
+              Import a script (.md / .txt) to start recording, or open a folder
+              that already holds booth sessions. Booth keeps its sessions and
+              exports next to your script.
             </div>
-            <Btn id="open-folder-empty" label="Open Folder…" hint="o" onClick={() => void openFolder()} />
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn
+                id="import-script-empty"
+                label="Import Script…"
+                hint="i"
+                variant="success"
+                onClick={() => void importFile()}
+              />
+              <Btn id="open-folder-empty" label="Open Folder…" hint="o" onClick={() => void openFolder()} />
+            </div>
           </div>
         )}
       </div>
@@ -264,6 +292,12 @@ export function Load({
           J/K NAVIGATE · ENTER / CLICK OPEN
         </span>
         <span style={{ flex: 1 }} />
+        <Btn
+          id="import-script"
+          label="Import Script…"
+          hint="i"
+          onClick={() => void importFile()}
+        />
         <Btn id="open-folder" label="Open Folder…" hint="o" onClick={() => void openFolder()} />
         <Btn
           id="rescan"

@@ -21,6 +21,7 @@ flowchart TD
 
     LOAD["LOAD — recent project folders,\nresumable sessions first per folder\n(first run: empty state + OPEN FOLDER)"]
     LOAD -->|"O / OPEN FOLDER…\n(native dialog → recents)"| LOAD
+    LOAD -->|"I / IMPORT SCRIPT…\n(.md/.txt → units → fresh session)"| GROUP
     LOAD -->|"Enter / click row\n(no session.json → fresh)"| GROUP
     LOAD -->|"Enter / click row\n(session.json exists → resume)"| BOOTH
     LOAD -->|"R / RESCAN button"| LOAD
@@ -55,6 +56,15 @@ root itself plus one level down, and `session::list_candidates` lists fresh open
 with a parseable `narration/` script but no session). Asset-protocol access for take playback is
 granted **per opened folder at runtime** (`asset_protocol_scope().allow_directory`) — the static
 scope in `tauri.conf.json` is empty by design.
+
+**Script import (.md/.txt):** `import_script` parses the document
+(`script::units_from_document` — blank-line paragraphs sentence-split into units; markdown
+headings become chapters, fenced code skipped, light inline strip; a `[VISUAL:`/`[CUE:`
+paragraph becomes the preceding unit's cue) and persists the result as the folder's
+`narration/script-units.json`, so the standard parse ladder and every downstream feature work
+unchanged. `session.sourceFile` links back to the imported document for inline-edit write-back.
+Re-importing into a folder that already has a session is refused (open or remove the session
+first). Unsupported extensions are rejected naming .md/.txt.
 
 ## 2. Booth interaction states
 
@@ -253,5 +263,6 @@ on take-less passages; `cursor` is always clamped to a valid index.
 | 16 | Script text was read-only in the booth — wording tweaks meant editing files by hand | founder directive | click the teleprompter text (idle only) → inline textarea, one paragraph per unit; SAVE button (greyed until the draft changes) + always-active CANCEL, or ⌘S; propagates each changed unit to session.json, `script-units.json`, and `completed-videos/<slug>/script.md` (exact-match replace; warnings on the amber chip if a target is missing); Esc/CANCEL discards immediately; click-outside exits silently when clean, but a dirty draft pops SAVE CHANGES? (Save ⏎ / Discard esc) — never a silent data loss |
 | 17 | Control bar overflowed again when VIEW TRANSCRIPT widened it (fixed px button metrics assumed short labels + wide window) | REVIEW clipped | button metrics viewport-scaled via `clamp()` (`.btn`, `.control-bar`, REC); key hints hide below 1340 px (keys still work) |
 | 18 | App was unusable off the author's machine — episodes root, asset scope, and the edit write-back sink were all hardcoded to one workspace | OSS-blocking | project model: recents + OPEN FOLDER (config.rs), runtime asset-scope grants, `session.sourceFile` write-back target (legacy completed-videos sink removed) |
+| 19 | Only pre-built script-units.json / chunks.json could be opened — a stranger has a script in a document, not our JSON | OSS-blocking | IMPORT SCRIPT… (.md/.txt) on LOAD: `units_from_document` → persisted units file → normal session; cue convention preserved |
 
 Future gaps: add the transition to the diagram FIRST, then implement, then append a row here.
