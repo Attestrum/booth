@@ -229,29 +229,31 @@ body,
   }
 }
 
-/* ? help — faint corner hint, modal cheat-sheet */
+/* KEY BINDINGS corner button — opens the modal cheat-sheet (? key too) */
 .help-hint {
   position: fixed;
-  right: 16px;
-  bottom: 14px;
+  right: 18px;
+  bottom: 16px;
   z-index: 40;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: transparent;
-  border: 1px solid var(--faint-cyan);
-  color: var(--dim-cyan);
-  opacity: 0.5;
+  padding: 9px 14px;
+  background: rgba(127, 224, 255, 0.06);
+  border: 1px solid rgba(127, 224, 255, 0.45);
+  color: var(--cyan);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--dim-cyan);
   cursor: pointer;
   transition:
-    opacity 120ms ease,
-    border-color 120ms ease;
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 .help-hint:hover {
-  opacity: 1;
-  border-color: var(--dim-cyan);
+  background: rgba(127, 224, 255, 0.14);
+  border-color: var(--cyan);
+  box-shadow: 0 0 16px rgba(127, 224, 255, 0.25);
 }
 .help-overlay {
   position: fixed;
@@ -272,6 +274,59 @@ body,
   background: #0a0e14;
   border: 1px solid var(--dim-cyan);
   box-shadow: 0 0 40px rgba(127, 224, 255, 0.15);
+}
+
+/* top-rail input-device picker */
+.device-label {
+  background: transparent;
+  border: none;
+  color: var(--dim-cyan);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  opacity: 0.9;
+  cursor: pointer;
+  padding: 4px 6px;
+  transition: color 120ms ease;
+}
+.device-label:hover:not(:disabled) {
+  color: var(--cyan);
+  text-shadow: 0 0 8px var(--dim-cyan);
+}
+.device-label:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.device-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 260px;
+  background: #0a0e14;
+  border: 1px solid var(--dim-cyan);
+  box-shadow: 0 0 24px rgba(127, 224, 255, 0.12);
+}
+.device-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(127, 224, 255, 0.08);
+  color: var(--dim-cyan);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+.device-menu-item:hover {
+  background: var(--faint-cyan);
+  color: var(--cyan);
+}
+.device-menu-item--active {
+  color: var(--green);
 }
 
 /* teleprompter text is click-to-edit when idle */

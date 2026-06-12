@@ -83,11 +83,48 @@ impl AudioEngine {
     }
 }
 
+/// The user's chosen input device name (None = follow the OS default).
+/// Set from the top-rail picker; falls back to the default device whenever
+/// the chosen one isn't present (unplugged AirPods, etc).
+static SELECTED_DEVICE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn set_selected_device(name: Option<String>) {
+    *SELECTED_DEVICE.lock().unwrap() = name;
+}
+
+fn pick_device(host: &cpal::Host) -> Option<cpal::Device> {
+    let wanted = SELECTED_DEVICE.lock().unwrap().clone();
+    if let Some(wanted) = wanted {
+        if let Ok(mut devices) = host.input_devices() {
+            if let Some(d) = devices.find(|d| d.name().map(|n| n == wanted).unwrap_or(false)) {
+                return Some(d);
+            }
+        }
+    }
+    host.default_input_device()
+}
+
+/// Every input device the host can see (the top-rail picker's menu).
+pub fn list_devices() -> Vec<DeviceInfo> {
+    let host = cpal::default_host();
+    let Ok(devices) = host.input_devices() else {
+        return Vec::new();
+    };
+    devices
+        .filter_map(|d| {
+            let name = d.name().ok()?;
+            let config = d.default_input_config().ok()?;
+            Some(DeviceInfo {
+                name,
+                sample_rate: config.sample_rate().0,
+            })
+        })
+        .collect()
+}
+
 pub fn current_device() -> Result<DeviceInfo, String> {
     let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .ok_or("no input device available")?;
+    let device = pick_device(&host).ok_or("no input device available")?;
     let config = device.default_input_config().map_err(|e| e.to_string())?;
     Ok(DeviceInfo {
         name: device.name().unwrap_or_else(|_| "unknown".into()),
@@ -171,9 +208,7 @@ fn make_frame(cap: &mut Capture) -> AudioFrame {
 
 fn open_stream(path: &PathBuf) -> Result<(cpal::Stream, Arc<Mutex<Capture>>, u32)> {
     let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .ok_or_else(|| anyhow!("no input device available"))?;
+    let device = pick_device(&host).ok_or_else(|| anyhow!("no input device available"))?;
     let default = device.default_input_config()?;
 
     // prefer 48 kHz if the device supports it at its default sample format

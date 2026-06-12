@@ -51,7 +51,7 @@ export function HelpOverlay() {
         title="Keyboard help (?)"
         onClick={() => setOpen(true)}
       >
-        ?
+        Key Bindings
       </button>
     );
   }

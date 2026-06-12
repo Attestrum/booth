@@ -28,6 +28,23 @@ fn current_device() -> Result<DeviceInfo, String> {
 }
 
 #[tauri::command]
+fn list_input_devices() -> Vec<DeviceInfo> {
+    audio::list_devices()
+}
+
+/// Choose the recording input (None = follow the OS default). Persisted;
+/// missing devices fall back to the default at stream-open time.
+#[tauri::command]
+fn set_input_device(
+    app: tauri::AppHandle,
+    name: Option<String>,
+) -> Result<DeviceInfo, String> {
+    audio::set_selected_device(name.clone());
+    config::set_input_device(&app, name).map_err(|e| format!("{e:#}"))?;
+    audio::current_device()
+}
+
+#[tauri::command]
 fn get_recents(app: tauri::AppHandle) -> Vec<String> {
     config::load(&app)
         .recents
@@ -248,6 +265,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // restore the persisted input-device choice before anything records
+            audio::set_selected_device(config::load(app.handle()).input_device);
             let engine = AudioEngine::new(app.handle().clone());
             app.manage(engine);
             app.manage(RecordingState(Mutex::new(None)));
@@ -255,6 +274,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             current_device,
+            list_input_devices,
+            set_input_device,
             get_recents,
             add_project,
             scan_sessions,

@@ -5,7 +5,9 @@ import {
   discardTake,
   discardTakeAt,
   editUnitText,
+  listInputDevices,
   saveSession,
+  setInputDevice,
   startRecording,
   stopRecording,
   takePath,
@@ -50,6 +52,7 @@ export function Booth({
   const [recStart, setRecStart] = useState(0);
   const [clock, setClock] = useState("00:00.0");
   const [device, setDevice] = useState<DeviceInfo | null>(null);
+  const [deviceMenu, setDeviceMenu] = useState<DeviceInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revertArmed, setRevertArmed] = useState(false);
   const [undo, setUndo] = useState<{ passage: number; take: Take } | null>(null);
@@ -320,10 +323,74 @@ export function Booth({
           {String(cursor + 1).padStart(2, "0")}/{session.passages.length}
         </span>
         <span style={{ flex: 1 }} />
-        <span style={{ letterSpacing: "0.1em", opacity: 0.8 }}>
-          {device
-            ? `${device.name} · ${(session.format?.sampleRate ?? device.sampleRate) / 1000}k/24`
-            : "—"}
+        <span style={{ position: "relative" }}>
+          <button
+            type="button"
+            className="device-label"
+            data-autopilot="device"
+            title="Change input device"
+            disabled={recording}
+            onClick={async () => {
+              if (deviceMenu) return setDeviceMenu(null);
+              try {
+                setDeviceMenu(await listInputDevices());
+              } catch {
+                setDeviceMenu([]);
+              }
+            }}
+          >
+            {device
+              ? `${device.name} · ${(session.format?.sampleRate ?? device.sampleRate) / 1000}k/24`
+              : "—"}{" "}
+            ▾
+          </button>
+          {deviceMenu && (
+            <div className="device-menu">
+              <button
+                type="button"
+                className="device-menu-item"
+                data-autopilot="device-default"
+                onClick={async () => {
+                  setDeviceMenu(null);
+                  try {
+                    setDevice(await setInputDevice(null));
+                    playSfx("toggle", 0.35);
+                  } catch (e) {
+                    setError(String(e));
+                  }
+                }}
+              >
+                System default
+              </button>
+              {deviceMenu.map((d) => (
+                <button
+                  key={d.name}
+                  type="button"
+                  className={
+                    d.name === device?.name
+                      ? "device-menu-item device-menu-item--active"
+                      : "device-menu-item"
+                  }
+                  onClick={async () => {
+                    setDeviceMenu(null);
+                    try {
+                      setDevice(await setInputDevice(d.name));
+                      playSfx("toggle", 0.35);
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                >
+                  {d.name} · {d.sampleRate / 1000}k
+                </button>
+              ))}
+              {deviceMenu.length === 0 && (
+                <div className="device-menu-item" style={{ cursor: "default" }}>
+                  no input devices found
+                </div>
+              )}
+            </div>
+          )}
         </span>
         <LevelMeter frame={frame} recording={recording} />
       </div>

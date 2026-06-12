@@ -48,6 +48,9 @@ export const importScript = (path: string) =>
 
 // ---- audio ----
 export const currentDevice = () => invoke<DeviceInfo>("current_device");
+export const listInputDevices = () => invoke<DeviceInfo[]>("list_input_devices");
+export const setInputDevice = (name: string | null) =>
+  invoke<DeviceInfo>("set_input_device", { name });
 export const startRecording = (dir: string, passage: number) =>
   invoke<string>("start_recording", { dir, passage }); // -> take filename
 export const stopRecording = () => invoke<Session>("stop_recording");

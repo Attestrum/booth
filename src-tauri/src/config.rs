@@ -15,6 +15,9 @@ const MAX_RECENTS: usize = 8;
 pub struct AppConfig {
     #[serde(default)]
     pub recents: Vec<String>,
+    /// Chosen input device name; None = follow the OS default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_device: Option<String>,
 }
 
 fn config_path(app: &tauri::AppHandle) -> Result<PathBuf> {
@@ -40,4 +43,12 @@ pub fn add_recent(app: &tauri::AppHandle, dir: &str) -> Result<AppConfig> {
     cfg.recents.truncate(MAX_RECENTS);
     fs::write(config_path(app)?, serde_json::to_string_pretty(&cfg)?)?;
     Ok(cfg)
+}
+
+/// Persist the input-device choice (None = OS default).
+pub fn set_input_device(app: &tauri::AppHandle, name: Option<String>) -> Result<()> {
+    let mut cfg = load(app);
+    cfg.input_device = name;
+    fs::write(config_path(app)?, serde_json::to_string_pretty(&cfg)?)?;
+    Ok(())
 }
