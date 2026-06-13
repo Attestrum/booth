@@ -333,6 +333,23 @@ fn delete_transcript(app: tauri::AppHandle, id: String) -> Result<(), String> {
     transcripts::delete(&d, &id).map_err(|e| format!("{e:#}"))
 }
 
+/// Reveal a transcript's JSON file in Finder (the library lives in app-data,
+/// which is otherwise hard to find).
+#[tauri::command]
+fn reveal_transcript(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let d = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let path = transcripts::path(&d, &id).map_err(|e| format!("{e:#}"))?;
+    if !path.exists() {
+        return Err("transcript file not found".into());
+    }
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("reveal failed: {e}"))?;
+    Ok(())
+}
+
 /// Render a saved transcript to `dest` in the chosen format (extension-derived).
 #[tauri::command]
 fn export_transcript(
@@ -404,6 +421,7 @@ pub fn run() {
             list_transcripts,
             open_transcript,
             delete_transcript,
+            reveal_transcript,
             export_transcript
         ])
         .run(tauri::generate_context!())

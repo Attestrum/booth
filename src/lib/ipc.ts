@@ -102,6 +102,8 @@ export const openTranscript = (id: string) =>
   invoke<Transcript>("open_transcript", { id });
 export const deleteTranscript = (id: string) =>
   invoke<void>("delete_transcript", { id });
+export const revealTranscript = (id: string) =>
+  invoke<void>("reveal_transcript", { id });
 export const exportTranscript = (id: string, fmt: string, dest: string) =>
   invoke<void>("export_transcript", { id, fmt, dest });
 

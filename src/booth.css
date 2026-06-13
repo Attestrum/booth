@@ -496,6 +496,49 @@ body,
   margin-top: 20px;
 }
 
+/* ---- transcript library: filter/sort chips + row actions ---- */
+.chip {
+  background: rgba(127, 224, 255, 0.04);
+  border: 1px solid var(--faint-cyan);
+  color: var(--dim-cyan);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
+}
+.chip:hover {
+  border-color: var(--dim-cyan);
+  color: var(--cyan);
+}
+.chip--on {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(127, 224, 255, 0.1);
+}
+.row-action {
+  background: transparent;
+  border: none;
+  color: var(--dim-cyan);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    text-shadow 120ms ease;
+}
+.row-action:hover {
+  color: var(--cyan);
+  text-shadow: 0 0 8px var(--dim-cyan);
+}
+
 /* per-take ✕ on the take cards — single click; the undo window is the net */
 .take-delete {
   background: transparent;

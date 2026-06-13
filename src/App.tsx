@@ -9,6 +9,7 @@ import { Grouping } from "./screens/Grouping";
 import { Booth } from "./screens/Booth";
 import { Review } from "./screens/Review";
 import { Transcribe, type TranscribeArg } from "./screens/Transcribe";
+import { Transcripts } from "./screens/Transcripts";
 import type { Session } from "./lib/session";
 
 export type Screen =
@@ -17,7 +18,8 @@ export type Screen =
   | "grouping"
   | "booth"
   | "review"
-  | "transcribe";
+  | "transcribe"
+  | "transcripts";
 
 export default function App() {
   useAutopilot();
@@ -49,7 +51,13 @@ export default function App() {
           onTranscribe={(kind, value) =>
             startTranscribe({ mode: "run", kind, value })
           }
-          onOpenTranscript={(id) => startTranscribe({ mode: "open", id })}
+          onShowTranscripts={() => setScreen("transcripts")}
+        />
+      )}
+      {screen === "transcripts" && (
+        <Transcripts
+          onBack={() => setScreen("load")}
+          onOpen={(id) => startTranscribe({ mode: "open", id })}
         />
       )}
       {screen === "grouping" && episodeDir && session && (

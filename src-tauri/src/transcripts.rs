@@ -39,6 +39,11 @@ pub fn save(app_data: &Path, t: &Transcript) -> Result<()> {
     Ok(())
 }
 
+/// Absolute path of a transcript's JSON file (id-validated).
+pub fn path(app_data: &Path, id: &str) -> Result<PathBuf> {
+    Ok(dir(app_data).join(format!("{}.json", safe_id(id)?)))
+}
+
 /// Load the full transcript by id.
 pub fn load(app_data: &Path, id: &str) -> Result<Transcript> {
     let id = safe_id(id)?;

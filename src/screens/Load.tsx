@@ -3,7 +3,6 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { downloadDir } from "@tauri-apps/api/path";
 import {
   addProject,
-  deleteTranscript,
   getRecents,
   importScript,
   listEpisodes,
@@ -33,11 +32,11 @@ interface Row {
 export function Load({
   onOpen,
   onTranscribe,
-  onOpenTranscript,
+  onShowTranscripts,
 }: {
   onOpen: (dir: string, s: Session, fresh: boolean) => void;
   onTranscribe: (kind: "url" | "file", value: string) => void;
-  onOpenTranscript: (id: string) => void;
+  onShowTranscripts: () => void;
 }) {
   const [rows, setRows] = useState<Row[] | null>(null); // null = scanning
   const [sel, setSel] = useState(0);
@@ -131,16 +130,6 @@ export function Load({
     }
   };
 
-  const removeTranscript = async (id: string) => {
-    try {
-      await deleteTranscript(id);
-      playSfx("nav", 0.3);
-      setTranscripts((ts) => ts.filter((t) => t.id !== id));
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
   const importFile = async () => {
     try {
       const file = await openDialog({
@@ -180,6 +169,7 @@ export function Load({
       o: () => void openFolder(),
       i: () => void importFile(),
       f: () => void pickMediaFile(),
+      t: () => onShowTranscripts(),
       r: () => {
         playSfx("nav", 0.3);
         void rescan().catch((e) => setError(String(e)));
@@ -294,63 +284,6 @@ export function Load({
           );
         })}
 
-        {transcripts.length > 0 && (
-          <>
-            <div
-              style={{
-                color: "var(--dim-cyan)",
-                fontSize: 10,
-                letterSpacing: "0.25em",
-                margin: "18px 0 8px",
-                borderBottom: "1px solid var(--faint-cyan)",
-                paddingBottom: 4,
-              }}
-            >
-              ◢ TRANSCRIPTS
-            </div>
-            {transcripts.map((t) => (
-              <div
-                key={t.id}
-                className="load-row"
-                data-autopilot={`transcript-${t.id}`}
-                onClick={() => {
-                  playSfx("toggle");
-                  onOpenTranscript(t.id);
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 24,
-                  padding: "14px 18px",
-                  marginBottom: 6,
-                  border: "1px solid var(--faint-cyan)",
-                  color: "var(--dim-cyan)",
-                }}
-              >
-                <span style={{ fontSize: 11, letterSpacing: "0.2em", width: 70 }}>
-                  OPEN
-                </span>
-                <span style={{ flex: 1, letterSpacing: "0.08em", fontSize: 15 }}>
-                  {t.title}
-                </span>
-                <span style={{ fontSize: 11, textAlign: "right" }}>
-                  {t.segmentSource} · {fmtDur(t.durationSec)} · {t.nSegments} seg
-                </span>
-                <button
-                  className="take-delete"
-                  title="Delete transcript"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void removeTranscript(t.id);
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </>
-        )}
-
         {rows === null && !error && (
           <div style={{ color: "var(--dim-cyan)" }}>scanning…</div>
         )}
@@ -425,6 +358,12 @@ export function Load({
         </span>
         <span style={{ flex: 1 }} />
         <Btn
+          id="transcripts"
+          label={`Transcripts${transcripts.length ? ` ${transcripts.length}` : ""}`}
+          hint="t"
+          onClick={() => onShowTranscripts()}
+        />
+        <Btn
           id="import-script"
           label="Import Script…"
           hint="i"
@@ -443,14 +382,6 @@ export function Load({
       </div>
     </div>
   );
-}
-
-function fmtDur(sec: number) {
-  const s = Math.round(sec);
-  const p = (n: number) => String(n).padStart(2, "0");
-  const h = Math.floor(s / 3600);
-  const rest = `${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
-  return h > 0 ? `${h}:${rest}` : rest;
 }
 
 function Progress({ done, total }: { done: number; total: number }) {
