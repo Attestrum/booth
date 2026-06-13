@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Import several scripts from one folder:** importing a `.md`/`.txt` into a
+  folder that already holds a booth session no longer fails with "this folder
+  already has a booth session." The new script gets its own subfolder (named
+  after the document) and becomes its own episode — so you can keep multiple
+  scripts in `~/Downloads` (or anywhere) and import each. Existing sessions are
+  untouched and still open from the list.
 - **Transcription — paste a link or pick a file:** the Load screen now
   transcribes. Paste a YouTube / TikTok / Instagram / Facebook link or choose a
   local audio/video file. URLs import an existing caption track when there is one

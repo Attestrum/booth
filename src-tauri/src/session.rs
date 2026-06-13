@@ -133,6 +133,27 @@ fn session_path(episode_dir: &Path) -> PathBuf {
     booth_dir(episode_dir).join("session.json")
 }
 
+/// Folder-safe slug from a script name, for per-script episode subfolders.
+fn slugify(name: &str) -> String {
+    let s: String = name
+        .trim()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let s = s.trim_matches('-').to_string();
+    if s.is_empty() {
+        "script".to_string()
+    } else {
+        s
+    }
+}
+
 pub fn takes_dir(episode_dir: &Path) -> PathBuf {
     booth_dir(episode_dir).join("takes")
 }
@@ -503,8 +524,14 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].episode_dir, root.to_string_lossy());
 
-        // re-import over an existing session is refused
-        assert!(import_document(&md, "2026-06-12T00:00:01Z".into()).is_err());
+        // a SECOND script in the same (now-claimed) folder gets its own subfolder
+        let md2 = root.join("another.md");
+        fs::write(&md2, "# A\n\nMore words here.\n").unwrap();
+        let (dir2, s2, _) = import_document(&md2, "2026-06-12T00:00:01Z".into()).unwrap();
+        assert_eq!(dir2, root.join("another"), "second script gets its own subfolder");
+        assert_eq!(s2.episode, "another");
+        // re-importing that same script (its subfolder now claimed) IS refused
+        assert!(import_document(&md2, "2026-06-12T00:00:02Z".into()).is_err());
         // unsupported extension is refused
         let pdf = root.join("nope.pdf");
         fs::write(&pdf, "x").unwrap();
@@ -573,15 +600,26 @@ pub fn import_document(src: &Path, now_iso: String) -> Result<(PathBuf, Session,
             "can't import .{ext} — bring a .md or .txt script (PDF/docx: export to one of those first)"
         );
     }
-    let dir = src
+    let parent = src
         .parent()
-        .ok_or_else(|| anyhow!("script file has no parent folder"))?
-        .to_path_buf();
+        .ok_or_else(|| anyhow!("script file has no parent folder"))?;
+    // Default to the script's own folder as the episode. If that folder already
+    // holds a booth session, give THIS script its own subfolder instead of
+    // refusing — so several scripts can share one folder (e.g. ~/Downloads),
+    // each its own episode. Existing root-level sessions still scan/open.
+    let mut dir = parent.to_path_buf();
     if session_path(&dir).exists() {
-        bail!(
-            "this folder already has a booth session — open it from the list instead \
-             (or remove its narration/booth/ to re-import)"
-        );
+        let stem = src
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "script".into());
+        dir = parent.join(slugify(&stem));
+        if session_path(&dir).exists() {
+            bail!(
+                "this script is already imported here — open it from the list \
+                 instead (or remove its narration/booth/ to re-import)"
+            );
+        }
     }
     let raw = fs::read_to_string(src).with_context(|| format!("read {}", src.display()))?;
     let units = script::units_from_document(&raw, markdown);
