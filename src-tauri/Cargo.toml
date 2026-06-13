@@ -1,6 +1,6 @@
 [package]
 name = "booth"
-version = "0.1.2"
+version = "0.1.3"
 description = "ATTESTRUM // BOOTH — a teleprompter-style narration recording booth"
 authors = ["Hyper Beam Media LLC"]
 license = "Apache-2.0 OR MIT"

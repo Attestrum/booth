@@ -35,6 +35,16 @@ body,
   cursor: default;
 }
 
+/* opt selected regions back into highlighting — the app is no-select by
+   default, but transcript text should be selectable so a portion can be
+   copied by hand (WKWebView needs the -webkit- prefix). */
+.tx-selectable,
+.tx-selectable * {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
 /* the whole window is a drag region except interactive zones */
 .titlebar-drag {
   position: fixed;

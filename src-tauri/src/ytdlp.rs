@@ -68,28 +68,33 @@ pub fn resolve_bin() -> PathBuf {
     PathBuf::from(bundled_name)
 }
 
-/// A configured yt-dlp invoker. Holds the binary path and, crucially, the
-/// browser to pull cookies from — YouTube now gates anonymous requests behind a
-/// bot check, so every call must carry the user's own browser cookies
-/// (`--cookies-from-browser`). For a local, single-user tool this is the
-/// intended mechanism (the user's own logged-in session, on-device).
+/// A configured yt-dlp invoker. Holds the binary path and, optionally, a
+/// browser to pull cookies from. Cookies are OFF by default: reading Chrome's
+/// cookie store is slow (it decrypts thousands of entries) and, because the
+/// sidecar is a distinct binary, triggers a macOS Keychain authorization prompt
+/// that can hang the download behind the app window. The bundled yt-dlp fetches
+/// YouTube, TikTok, Instagram, etc. fine anonymously — it solves YouTube's
+/// challenge itself (falling back to a player client that needs no JS engine
+/// when deno/node are absent, as they are in the sandboxed app). `with_cookies`
+/// remains an escape hatch if YouTube ever tightens its wall again.
 pub struct YtDlp {
     bin: PathBuf,
     cookies_browser: Option<String>,
 }
 
 impl YtDlp {
-    /// Default invoker: resolved binary, cookies from Chrome (validated to clear
-    /// YouTube's bot check; Safari needs Full Disk Access so is not the default).
+    /// Default invoker: resolved binary, no cookies (see the struct docs for why
+    /// — slow keychain access + a hanging auth prompt). Use [`with_cookies`] to
+    /// opt a YouTube request into Chrome cookies.
     pub fn new() -> Self {
         Self {
             bin: resolve_bin(),
-            cookies_browser: Some("chrome".to_string()),
+            cookies_browser: None,
         }
     }
 
-    /// Override the cookie source browser (or `None` to send no cookies — fine
-    /// for sites without a bot wall). Exposed for a future UI browser picker.
+    /// Override the cookie source browser (or `None` to send no cookies). Pass
+    /// `Some("chrome")` for a YouTube URL that hits the anonymous bot wall.
     #[allow(dead_code)]
     pub fn with_cookies(mut self, browser: Option<String>) -> Self {
         self.cookies_browser = browser;
@@ -172,13 +177,19 @@ impl YtDlp {
     /// Download the URL's audio to a transient file in `out_dir`. Prefers
     /// symphonia-decodable containers (m4a/mp3) so no ffmpeg post-processing is
     /// needed; the caller deletes it after transcription.
+    ///
+    /// The trailing `best[ext=mp4]/best` fallback covers sites like TikTok that
+    /// expose no audio-only stream — only muxed video+audio. yt-dlp would
+    /// otherwise fail with "Requested format is not available"; instead we pull
+    /// the muxed mp4 and `decode.rs` picks its AAC audio track via symphonia's
+    /// isomp4 demuxer (the video track is skipped — see `decode_symphonia`).
     pub fn download_audio(&self, url: &str, out_dir: &Path) -> Result<PathBuf> {
         let tmpl = out_dir.join("audio.%(ext)s");
         let out = self
             .cmd()
             .args([
                 "-f",
-                "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio",
+                "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best[ext=mp4]/best",
                 "-o",
                 tmpl.to_str().context("out dir utf8")?,
                 url,
@@ -188,8 +199,68 @@ impl YtDlp {
         if !out.status.success() {
             bail!("{}", clean_err(&out.stderr));
         }
-        find_prefixed(out_dir, "audio.").context("yt-dlp reported success but wrote no audio file")
+        find_audio_file(out_dir).context("yt-dlp reported success but wrote no audio file")
     }
+
+    /// Download audio AND capture title/duration from the same extraction
+    /// (`--write-info-json`). Used for platforms we don't probe for captions
+    /// (TikTok/Instagram/Facebook): a separate caption pass there is just a slow,
+    /// fruitless extraction, so this gets the media and its metadata in one call.
+    /// Returns `(audio_file, title, duration_sec)`. Same format ladder as
+    /// `download_audio`, including the muxed-mp4 fallback those sites need.
+    pub fn download_audio_with_meta(
+        &self,
+        url: &str,
+        out_dir: &Path,
+    ) -> Result<(PathBuf, String, f64)> {
+        let tmpl = out_dir.join("audio.%(ext)s");
+        let out = self
+            .cmd()
+            .args([
+                "--write-info-json",
+                "-f",
+                "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best[ext=mp4]/best",
+                "-o",
+                tmpl.to_str().context("out dir utf8")?,
+                url,
+            ])
+            .output()
+            .context("run yt-dlp audio download")?;
+        if !out.status.success() {
+            bail!("{}", clean_err(&out.stderr));
+        }
+        let audio =
+            find_audio_file(out_dir).context("yt-dlp reported success but wrote no audio file")?;
+        let info: serde_json::Value = std::fs::read_to_string(out_dir.join("audio.info.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        let title = info
+            .get("title")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("transcript")
+            .to_string();
+        let duration = info.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        Ok((audio, title, duration))
+    }
+}
+
+/// Platforms where we skip the caption probe and go straight to Whisper. They
+/// rarely expose a usable caption track via yt-dlp, so probing just adds a slow,
+/// usually-fruitless extraction before the inevitable audio download. Matched by
+/// host substring (tolerates `www.`/`m.` prefixes and share/shortlink hosts).
+pub fn skips_caption_probe(url: &str) -> bool {
+    let u = url.to_ascii_lowercase();
+    [
+        "tiktok.com",
+        "instagram.com",
+        "facebook.com",
+        "fb.watch",
+        "fb.com",
+    ]
+    .iter()
+    .any(|d| u.contains(d))
 }
 
 impl Default for YtDlp {
@@ -249,9 +320,12 @@ fn find_caption_file(dir: &Path) -> Option<PathBuf> {
     })
 }
 
-fn find_prefixed(dir: &Path, prefix: &str) -> Result<PathBuf> {
-    first_match(dir, |name| name.starts_with(prefix))
-        .with_context(|| format!("no '{prefix}*' file in {}", dir.display()))
+/// The downloaded `audio.*` media file, skipping the `audio.info.json` sidecar
+/// that `--write-info-json` drops alongside it.
+fn find_audio_file(dir: &Path) -> Option<PathBuf> {
+    first_match(dir, |name| {
+        name.starts_with("audio.") && !name.ends_with(".json")
+    })
 }
 
 fn first_match(dir: &Path, pred: impl Fn(&str) -> bool) -> Option<PathBuf> {
@@ -309,5 +383,30 @@ mod tests {
             pick_caption(&meta, &["es", "en"]).map(|c| c.lang),
             Some("es".to_string())
         );
+    }
+
+    #[test]
+    fn skips_caption_probe_for_short_video_platforms() {
+        for url in [
+            "https://www.tiktok.com/@user/video/123",
+            "https://vm.tiktok.com/abc/",
+            "https://www.instagram.com/reel/xyz/",
+            "https://instagram.com/p/abc/",
+            "https://www.facebook.com/watch/?v=123",
+            "https://fb.watch/abc/",
+        ] {
+            assert!(skips_caption_probe(url), "should skip probe for {url}");
+        }
+    }
+
+    #[test]
+    fn probes_captions_for_youtube_and_others() {
+        for url in [
+            "https://www.youtube.com/watch?v=abc",
+            "https://youtu.be/abc",
+            "https://vimeo.com/123",
+        ] {
+            assert!(!skips_caption_probe(url), "should probe captions for {url}");
+        }
     }
 }

@@ -9,7 +9,7 @@ use crate::decode::decode_to_mono_16k;
 use crate::transcript::{Segment, SegmentSource, SourceKind, Transcript};
 use crate::whisper::Whisper;
 use crate::ytdlp::{CaptionKind, YtDlp};
-use crate::{model, subtitles, transcripts};
+use crate::{model, subtitles, transcripts, ytdlp};
 use anyhow::{bail, Context, Result};
 use crossbeam_channel::{unbounded, Sender};
 use std::path::{Path, PathBuf};
@@ -133,8 +133,28 @@ fn build_from_url(
     scratch: &Path,
     url: &str,
 ) -> Result<Built> {
-    emit(app, "PROBING CAPTIONS", None);
     let ydl = YtDlp::new();
+
+    // TikTok/Instagram/Facebook rarely expose a usable caption track, so skip
+    // the slow probe and go straight to audio + Whisper. The download captures
+    // the title/duration that the caption pass would otherwise have supplied.
+    if ytdlp::skips_caption_probe(url) {
+        emit(app, "NO CAPTIONS ▸ downloading audio", None);
+        let (audio, title, duration) = ydl.download_audio_with_meta(url, scratch)?;
+        let (segments, duration_sec, model) = whisper_pipeline(app, whisper, app_data, &audio)?;
+        return Ok(Built {
+            title,
+            source: url.to_string(),
+            source_kind: SourceKind::Url,
+            segment_source: SegmentSource::Whisper,
+            model,
+            language: None,
+            duration_sec: if duration > 0.0 { duration } else { duration_sec },
+            segments,
+        });
+    }
+
+    emit(app, "PROBING CAPTIONS", None);
     let fetched = ydl.fetch_captions(url, scratch, &["en"])?;
 
     if let Some(cap) = fetched.caption {

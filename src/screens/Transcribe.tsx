@@ -50,7 +50,9 @@ export function Transcribe({
   const [tick, setTick] = useState(0);
   const [showExport, setShowExport] = useState(false);
   const [exportFmt, setExportFmt] = useState<ExportFormat>("txt");
+  const [copied, setCopied] = useState<null | "text" | "url">(null);
   const started = useRef(false);
+  const copyTimer = useRef<number | null>(null);
 
   const running = arg.mode === "run" && !transcript && !error;
 
@@ -91,6 +93,24 @@ export function Transcribe({
 
   useKeymap({ escape: () => onBack() }, []);
 
+  // clear the "Copied ✓" timer if we unmount mid-flash
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
+
+  const copy = async (kind: "text" | "url", value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(kind);
+      playSfx("chime", 0.3);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = window.setTimeout(() => setCopied(null), 1400);
+    } catch (e) {
+      playSfx("error");
+      setError(String(e));
+    }
+  };
+
   const doExport = async (fmt: ExportFormat) => {
     if (!transcript) return;
     setShowExport(false);
@@ -109,6 +129,9 @@ export function Transcribe({
       setError(String(e));
     }
   };
+
+  const paras = transcript ? paragraphs(transcript.segments) : [];
+  const fullText = paras.map((p) => p.text).join("\n\n");
 
   return (
     <div className="screen" style={{ padding: "72px 90px 64px" }}>
@@ -190,8 +213,11 @@ export function Transcribe({
 
       {/* RESULT — flowing paragraphs (timestamp marker above each) */}
       {transcript && (
-        <div style={{ overflowY: "auto", flex: 1, marginBottom: 16, maxWidth: 900 }}>
-          {paragraphs(transcript.segments).map((p, i) => (
+        <div
+          className="tx-selectable"
+          style={{ overflowY: "auto", flex: 1, marginBottom: 16, maxWidth: 900 }}
+        >
+          {paras.map((p, i) => (
             <div key={i} style={{ margin: "0 0 22px" }}>
               <div
                 style={{
@@ -259,12 +285,26 @@ export function Transcribe({
         </span>
         <span style={{ flex: 1 }} />
         {transcript && (
-          <Btn
-            id="export"
-            label="Export…"
-            variant="success"
-            onClick={() => setShowExport(true)}
-          />
+          <>
+            <Btn
+              id="copy-text"
+              label={copied === "text" ? "Copied ✓" : "Copy Text"}
+              variant={copied === "text" ? "success" : "primary"}
+              onClick={() => void copy("text", fullText)}
+            />
+            <Btn
+              id="copy-url"
+              label={copied === "url" ? "Copied ✓" : "Copy URL"}
+              variant={copied === "url" ? "success" : "primary"}
+              onClick={() => void copy("url", transcript.source)}
+            />
+            <Btn
+              id="export"
+              label="Export…"
+              variant="success"
+              onClick={() => setShowExport(true)}
+            />
+          </>
         )}
       </div>
 

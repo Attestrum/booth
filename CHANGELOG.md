@@ -1,6 +1,23 @@
 # Changelog
 
-## Unreleased
+## v0.1.3 — 2026-06-13
+
+- **Reliable TikTok / Instagram / Facebook transcription:** these platforms
+  serve only muxed video (no audio-only stream), so transcribing them previously
+  failed with "Requested format is not available." The audio format ladder now
+  falls back to the muxed mp4 and decodes its audio track directly (no ffmpeg).
+  For these short-video platforms the slow, usually-fruitless caption probe is
+  skipped — they go straight to audio + Whisper, pulling title and duration from
+  the same download.
+- **No more cookie keychain hang:** yt-dlp no longer reads your browser cookies
+  by default. The old default decrypted thousands of Chrome cookies on every
+  request and could trigger a macOS Keychain prompt that hung the download behind
+  the window. The bundled yt-dlp fetches YouTube / TikTok / Instagram anonymously,
+  so cookies are unnecessary (an opt-in escape hatch remains in code if YouTube
+  ever tightens its wall again).
+- **Copy from the transcript result:** new **Copy Text** and **Copy URL**
+  buttons, and the transcript body is now selectable so you can highlight and
+  copy any portion by hand (the rest of the app stays no-select).
 
 - **Windows support (build pipeline):** the app now builds for Windows x64. The
   Whisper backend is platform-split — Metal on macOS, CPU-only on Windows/Linux
