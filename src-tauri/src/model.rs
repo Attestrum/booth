@@ -86,6 +86,8 @@ pub fn ensure_model<F: FnMut(u8)>(app_data: &Path, mut on_progress: F) -> Result
 }
 
 /// Verify an existing file against the expected SHA-256 (lowercase hex).
+/// Exposed for future model re-verification / repair; covered by tests.
+#[allow(dead_code)]
 pub fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();

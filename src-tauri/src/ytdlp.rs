@@ -70,7 +70,8 @@ impl YtDlp {
     }
 
     /// Override the cookie source browser (or `None` to send no cookies — fine
-    /// for sites without a bot wall).
+    /// for sites without a bot wall). Exposed for a future UI browser picker.
+    #[allow(dead_code)]
     pub fn with_cookies(mut self, browser: Option<String>) -> Self {
         self.cookies_browser = browser;
         self

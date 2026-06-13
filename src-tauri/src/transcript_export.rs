@@ -33,6 +33,8 @@ impl Format {
         })
     }
 
+    /// Canonical extension (used by the frontend save dialog's default name).
+    #[allow(dead_code)]
     pub fn ext(self) -> &'static str {
         match self {
             Format::Txt => "txt",

@@ -1,32 +1,17 @@
 mod audio;
 mod config;
-// Audio decode (symphonia + rubato → 16 kHz mono f32). Consumed by the
-// transcribe engine (Phase 2); allow until then.
-#[allow(dead_code)]
 mod decode;
 mod export;
-// Whisper model download-on-first-run + SHA-256 verify. Consumed by the
-// transcribe engine (Phase 2); allow until then.
-#[allow(dead_code)]
 mod model;
 mod script;
 mod session;
-// Transcription data model + IO. Public entry points are consumed by the
-// transcribe engine + export command (Phase 2/3 wiring); allow until then.
-#[allow(dead_code)]
 mod subtitles;
-#[allow(dead_code)]
+mod transcribe;
 mod transcript;
-#[allow(dead_code)]
 mod transcript_export;
+mod transcripts;
 mod wav;
-// Whisper (whisper.cpp + Metal) wrapper. Consumed by the transcribe engine
-// (Phase 2); allow until then.
-#[allow(dead_code)]
 mod whisper;
-// yt-dlp sidecar: caption probe + audio download. Consumed by the transcribe
-// engine (Phase 2); allow until then.
-#[allow(dead_code)]
 mod ytdlp;
 
 use audio::{AudioEngine, DeviceInfo};
@@ -292,6 +277,93 @@ fn take_waveform(dir: String, file: String, buckets: usize) -> Result<Vec<f32>, 
     wav::waveform_peaks(&path, buckets).map_err(|e| format!("{e:#}"))
 }
 
+// ---- transcription -------------------------------------------------------
+
+/// Queue a transcription job (URL or local file). Returns immediately; progress
+/// arrives as `transcribe:progress` events and the result as `transcribe:done`
+/// (or `transcribe:error`).
+#[tauri::command]
+fn transcribe(
+    engine: tauri::State<'_, transcribe::TranscriptionEngine>,
+    kind: String,
+    value: String,
+    now_iso: String,
+) -> Result<(), String> {
+    let source = match kind.as_str() {
+        "url" => transcribe::Source::Url(value),
+        "file" => transcribe::Source::File(PathBuf::from(value)),
+        other => return Err(format!("unknown source kind: {other}")),
+    };
+    engine.submit(source, now_iso)
+}
+
+/// Whether the Whisper model is already downloaded (UI can show a one-time
+/// download notice before the first URL/file with no captions).
+#[tauri::command]
+fn model_status(app: tauri::AppHandle) -> bool {
+    app.path()
+        .app_data_dir()
+        .map(|d| model::is_present(&d))
+        .unwrap_or(false)
+}
+
+/// yt-dlp version string, or None if the sidecar can't run (UI surfaces this).
+#[tauri::command]
+fn yt_dlp_status() -> Option<String> {
+    ytdlp::YtDlp::new().version()
+}
+
+#[tauri::command]
+fn list_transcripts(app: tauri::AppHandle) -> Vec<transcripts::Summary> {
+    app.path()
+        .app_data_dir()
+        .map(|d| transcripts::list(&d))
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn open_transcript(app: tauri::AppHandle, id: String) -> Result<transcript::Transcript, String> {
+    let d = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    transcripts::load(&d, &id).map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+fn delete_transcript(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let d = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    transcripts::delete(&d, &id).map_err(|e| format!("{e:#}"))
+}
+
+/// Render a saved transcript to `dest` in the chosen format (extension-derived).
+#[tauri::command]
+fn export_transcript(
+    app: tauri::AppHandle,
+    id: String,
+    fmt: String,
+    dest: String,
+) -> Result<(), String> {
+    let d = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let t = transcripts::load(&d, &id).map_err(|e| format!("{e:#}"))?;
+    let format = transcript_export::Format::from_ext(&fmt)
+        .ok_or_else(|| format!("unknown export format: {fmt}"))?;
+    let bytes =
+        transcript_export::render(&t, format, &font_dir(&app)).map_err(|e| format!("{e:#}"))?;
+    std::fs::write(&dest, bytes).map_err(|e| format!("write {dest}: {e}"))?;
+    Ok(())
+}
+
+/// Resolve the bundled IBM Plex Mono font dir used by the PDF exporter.
+fn font_dir(app: &tauri::AppHandle) -> PathBuf {
+    if let Ok(res) = app.path().resource_dir() {
+        for cand in ["resources/fonts", "fonts"] {
+            let p = res.join(cand);
+            if p.exists() {
+                return p;
+            }
+        }
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/fonts")
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -302,6 +374,7 @@ pub fn run() {
             let engine = AudioEngine::new(app.handle().clone());
             app.manage(engine);
             app.manage(RecordingState(Mutex::new(None)));
+            app.manage(transcribe::TranscriptionEngine::new(app.handle().clone()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -324,7 +397,14 @@ pub fn run() {
             take_path,
             take_waveform,
             ffmpeg_status,
-            export_session
+            export_session,
+            transcribe,
+            model_status,
+            yt_dlp_status,
+            list_transcripts,
+            open_transcript,
+            delete_transcript,
+            export_transcript
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
