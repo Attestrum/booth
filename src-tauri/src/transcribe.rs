@@ -135,29 +135,28 @@ fn build_from_url(
 ) -> Result<Built> {
     emit(app, "PROBING CAPTIONS", None);
     let ydl = YtDlp::new();
-    let probed = ydl.probe(url, &["en"])?;
+    let fetched = ydl.fetch_captions(url, scratch, &["en"])?;
 
-    if let Some(cap) = probed.caption {
+    if let Some(cap) = fetched.caption {
         let (label, seg_source) = match cap.kind {
             CaptionKind::Manual => ("manual-subs", SegmentSource::ManualSubs),
             CaptionKind::Auto => ("auto-subs", SegmentSource::AutoSubs),
         };
         emit(app, &format!("CAPTIONS FOUND ▸ importing {label}"), None);
-        let file = ydl.download_captions(url, &cap, scratch)?;
-        let raw = std::fs::read_to_string(&file)?;
+        let raw = std::fs::read_to_string(&cap.file)?;
         let segments = subtitles::parse(&raw);
         if segments.is_empty() {
             bail!("caption file had no readable cues");
         }
         let tail = segments.last().map(|s| s.end_ms as f64 / 1000.0).unwrap_or(0.0);
         Ok(Built {
-            title: probed.title,
+            title: fetched.title,
             source: url.to_string(),
             source_kind: SourceKind::Url,
             segment_source: seg_source,
             model: None,
             language: Some(cap.lang),
-            duration_sec: if probed.duration_sec > 0.0 { probed.duration_sec } else { tail },
+            duration_sec: if fetched.duration_sec > 0.0 { fetched.duration_sec } else { tail },
             segments,
         })
     } else {
@@ -165,13 +164,13 @@ fn build_from_url(
         let audio = ydl.download_audio(url, scratch)?;
         let (segments, duration_sec, model) = whisper_pipeline(app, whisper, app_data, &audio)?;
         Ok(Built {
-            title: probed.title,
+            title: fetched.title,
             source: url.to_string(),
             source_kind: SourceKind::Url,
             segment_source: SegmentSource::Whisper,
             model,
             language: None,
-            duration_sec: if probed.duration_sec > 0.0 { probed.duration_sec } else { duration_sec },
+            duration_sec: if fetched.duration_sec > 0.0 { fetched.duration_sec } else { duration_sec },
             segments,
         })
     }

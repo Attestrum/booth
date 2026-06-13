@@ -42,7 +42,10 @@ export function Transcribe({
   const [error, setError] = useState<string | null>(null);
   const [sealFlash, setSealFlash] = useState(0);
   const [savedTo, setSavedTo] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
   const started = useRef(false);
+
+  const running = arg.mode === "run" && !transcript && !error;
 
   useEffect(() => {
     if (started.current) return;
@@ -70,6 +73,15 @@ export function Transcribe({
     return () => unsubs.forEach((u) => u.then((f) => f()));
   }, [arg]);
 
+  // tick an elapsed counter on the current stage so long extractions (yt-dlp
+  // ~25s) don't read as frozen; reset it whenever a new stage arrives.
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [running]);
+  useEffect(() => setTick(0), [log.length]);
+
   useKeymap({ escape: () => onBack() }, []);
 
   const doExport = async (fmt: string) => {
@@ -89,8 +101,6 @@ export function Transcribe({
       setError(String(e));
     }
   };
-
-  const running = arg.mode === "run" && !transcript && !error;
 
   return (
     <div className="screen" style={{ padding: "72px 90px 64px" }}>
@@ -157,6 +167,11 @@ export function Transcribe({
                 {p.pct != null && <Bar pct={p.pct} />}
                 {p.pct != null && (
                   <span style={{ fontSize: 11 }}>{p.pct}%</span>
+                )}
+                {last && p.pct == null && tick > 0 && (
+                  <span style={{ fontSize: 11, color: "var(--dim-cyan-soft)" }}>
+                    {tick}s
+                  </span>
                 )}
               </div>
             );

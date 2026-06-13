@@ -21,12 +21,21 @@ pub struct CaptionChoice {
     pub kind: CaptionKind,
 }
 
+/// A located caption file plus how it should be tagged.
 #[derive(Clone, Debug)]
-pub struct Probed {
+pub struct FetchedCaption {
+    pub file: PathBuf,
+    pub kind: CaptionKind,
+    pub lang: String,
+}
+
+/// Result of one caption-fetch extraction: metadata always; a caption file when
+/// a preferred-language track existed.
+#[derive(Clone, Debug)]
+pub struct Fetched {
     pub title: String,
     pub duration_sec: f64,
-    /// The best existing caption track, if any preferred-language one exists.
-    pub caption: Option<CaptionChoice>,
+    pub caption: Option<FetchedCaption>,
 }
 
 /// Resolve the yt-dlp binary: bundled next to the executable (release), the dev
@@ -95,50 +104,22 @@ impl YtDlp {
             .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
     }
 
-    /// Probe a URL: title, duration, and the best preferred-language caption
-    /// track (no media downloaded — `-J --skip-download`).
-    pub fn probe(&self, url: &str, prefer: &[&str]) -> Result<Probed> {
-        let out = self
-            .cmd()
-            .args(["-J", "--skip-download", url])
-            .output()
-            .context("run yt-dlp probe")?;
-        if !out.status.success() {
-            bail!("{}", clean_err(&out.stderr));
-        }
-        let meta: serde_json::Value =
-            serde_json::from_slice(&out.stdout).context("parse yt-dlp metadata")?;
-
-        Ok(Probed {
-            title: meta
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("transcript")
-                .to_string(),
-            duration_sec: meta.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0),
-            caption: pick_caption(&meta, prefer),
-        })
-    }
-
-    /// Download the chosen caption track to `out_dir`, returning the written
-    /// file (.vtt or .srt).
-    pub fn download_captions(
-        &self,
-        url: &str,
-        choice: &CaptionChoice,
-        out_dir: &Path,
-    ) -> Result<PathBuf> {
-        let flag = match choice.kind {
-            CaptionKind::Manual => "--write-subs",
-            CaptionKind::Auto => "--write-auto-subs",
-        };
+    /// One extraction: write the best preferred-language caption track (if any)
+    /// AND a metadata sidecar (`--write-info-json`), returning title, duration,
+    /// and the located caption file. This replaces the old probe-then-download
+    /// pair — YouTube extraction is ~25s, so doing it once (not twice) halves
+    /// the caption path. `out_dir` must be a scratch dir the caller cleans up.
+    pub fn fetch_captions(&self, url: &str, out_dir: &Path, prefer: &[&str]) -> Result<Fetched> {
+        let langs = prefer.join(",");
         let out = self
             .cmd()
             .args([
                 "--skip-download",
-                flag,
+                "--write-subs",
+                "--write-auto-subs",
+                "--write-info-json",
                 "--sub-langs",
-                &choice.lang,
+                &langs,
                 "--sub-format",
                 "vtt/srt/best",
                 "-o",
@@ -146,12 +127,36 @@ impl YtDlp {
                 url,
             ])
             .output()
-            .context("run yt-dlp caption download")?;
+            .context("run yt-dlp caption fetch")?;
         if !out.status.success() {
             bail!("{}", clean_err(&out.stderr));
         }
-        find_with_ext(out_dir, &["vtt", "srt"])
-            .context("yt-dlp reported success but wrote no subtitle file")
+
+        let info: serde_json::Value = std::fs::read_to_string(out_dir.join("cap.info.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        // The info.json's caption maps tell us whether a preferred track exists
+        // and whether it's manual or auto; the written file gives us the cues.
+        let caption = match pick_caption(&info, prefer) {
+            Some(choice) => find_caption_file(out_dir).map(|file| FetchedCaption {
+                file,
+                kind: choice.kind,
+                lang: choice.lang,
+            }),
+            None => None,
+        };
+
+        Ok(Fetched {
+            title: info
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("transcript")
+                .to_string(),
+            duration_sec: info.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0),
+            caption,
+        })
     }
 
     /// Download the URL's audio to a transient file in `out_dir`. Prefers
@@ -226,18 +231,12 @@ fn pick_lang(obj: &Map<String, serde_json::Value>, prefer: &[&str]) -> Option<St
     None
 }
 
-fn find_with_ext(dir: &Path, exts: &[&str]) -> Result<PathBuf> {
-    for ext in exts {
-        if let Some(p) = first_match(dir, |name| {
-            std::path::Path::new(name)
-                .extension()
-                .map(|e| e.eq_ignore_ascii_case(ext))
-                .unwrap_or(false)
-        }) {
-            return Ok(p);
-        }
-    }
-    bail!("no file with extensions {exts:?} in {}", dir.display())
+/// The written subtitle file (.vtt/.srt) in `dir` — skips the `.info.json`.
+fn find_caption_file(dir: &Path) -> Option<PathBuf> {
+    first_match(dir, |name| {
+        let l = name.to_ascii_lowercase();
+        l.ends_with(".vtt") || l.ends_with(".srt")
+    })
 }
 
 fn find_prefixed(dir: &Path, prefix: &str) -> Result<PathBuf> {
