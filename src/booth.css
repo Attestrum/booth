@@ -408,6 +408,94 @@ body,
   overflow-y: auto;
 }
 
+/* ---- export format chooser (Transcribe screen) ---- */
+.export-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 10, 0.82);
+  backdrop-filter: blur(2px);
+}
+.export-panel {
+  width: min(860px, 88vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 26px 30px 22px;
+  background: #0a0e14;
+  border: 1px solid var(--dim-cyan);
+  box-shadow: 0 0 44px rgba(127, 224, 255, 0.16);
+}
+.export-title {
+  color: var(--cyan);
+  letter-spacing: 0.28em;
+  font-size: 13px;
+  text-shadow: 0 0 10px var(--dim-cyan);
+}
+.export-sub {
+  color: var(--dim-cyan);
+  font-size: 12px;
+  margin: 8px 0 20px;
+  line-height: 1.5;
+}
+.export-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.export-opt {
+  display: flex;
+  gap: 12px;
+  text-align: left;
+  padding: 14px 16px;
+  background: rgba(127, 224, 255, 0.03);
+  border: 1px solid var(--faint-cyan);
+  color: var(--dim-cyan);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.export-opt:hover {
+  border-color: var(--dim-cyan);
+  background: rgba(127, 224, 255, 0.06);
+}
+.export-opt--on {
+  border-color: var(--cyan);
+  background: rgba(127, 224, 255, 0.1);
+  box-shadow: 0 0 16px rgba(127, 224, 255, 0.18) inset;
+}
+.export-radio {
+  color: var(--cyan);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.export-opt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.export-opt-label {
+  color: var(--cyan);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.export-opt-desc {
+  color: var(--dim-cyan-soft);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
 /* per-take ✕ on the take cards — single click; the undo window is the net */
 .take-delete {
   background: transparent;

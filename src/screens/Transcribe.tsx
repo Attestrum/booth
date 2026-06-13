@@ -8,8 +8,12 @@ import {
   onTranscribeDone,
   onTranscribeError,
 } from "../lib/ipc";
-import type { Transcript, TranscribeProgress } from "../lib/transcript";
-import { EXPORT_FORMATS } from "../lib/transcript";
+import type {
+  Transcript,
+  TranscribeProgress,
+  ExportFormat,
+} from "../lib/transcript";
+import { FORMAT_INFO, paragraphs } from "../lib/transcript";
 import { playSfx } from "../lib/sfx";
 import { useKeymap } from "../hooks/useKeymap";
 import { Btn } from "../components/Btn";
@@ -43,6 +47,8 @@ export function Transcribe({
   const [sealFlash, setSealFlash] = useState(0);
   const [savedTo, setSavedTo] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [showExport, setShowExport] = useState(false);
+  const [exportFmt, setExportFmt] = useState<ExportFormat>("txt");
   const started = useRef(false);
 
   const running = arg.mode === "run" && !transcript && !error;
@@ -84,11 +90,12 @@ export function Transcribe({
 
   useKeymap({ escape: () => onBack() }, []);
 
-  const doExport = async (fmt: string) => {
+  const doExport = async (fmt: ExportFormat) => {
     if (!transcript) return;
+    setShowExport(false);
     try {
       const dest = await saveDialog({
-        title: `Export transcript (.${fmt})`,
+        title: "Export Transcript",
         defaultPath: `${sanitize(transcript.title)}.${fmt}`,
       });
       if (typeof dest !== "string") return;
@@ -179,26 +186,32 @@ export function Transcribe({
         </div>
       )}
 
-      {/* RESULT — segments */}
+      {/* RESULT — flowing paragraphs (timestamp marker above each) */}
       {transcript && (
-        <div style={{ overflowY: "auto", flex: 1, marginBottom: 16 }}>
-          {transcript.segments.map((s, i) => (
-            <div
-              key={i}
-              style={{ display: "flex", gap: 18, margin: "5px 0", fontSize: 13 }}
-            >
-              <span
+        <div style={{ overflowY: "auto", flex: 1, marginBottom: 16, maxWidth: 900 }}>
+          {paragraphs(transcript.segments).map((p, i) => (
+            <div key={i} style={{ margin: "0 0 22px" }}>
+              <div
                 style={{
                   color: "var(--dim-cyan)",
-                  flex: "0 0 84px",
+                  fontSize: 11,
+                  letterSpacing: "0.06em",
+                  marginBottom: 6,
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {hms(s.startMs)}
-              </span>
-              <span style={{ color: "var(--cyan)", whiteSpace: "pre-wrap", flex: 1 }}>
-                {s.text}
-              </span>
+                {hms(p.startMs)}
+              </div>
+              <p
+                style={{
+                  color: "var(--cyan)",
+                  fontSize: 14,
+                  lineHeight: 1.75,
+                  margin: 0,
+                }}
+              >
+                {p.text}
+              </p>
             </div>
           ))}
         </div>
@@ -244,27 +257,76 @@ export function Transcribe({
         </span>
         <span style={{ flex: 1 }} />
         {transcript && (
-          <>
-            <span
-              style={{
-                color: "var(--dim-cyan)",
-                fontSize: 10,
-                letterSpacing: "0.2em",
-                marginRight: 4,
-              }}
-            >
-              EXPORT ▸
-            </span>
-            {EXPORT_FORMATS.map((f) => (
-              <Btn
-                key={f}
-                id={`export-${f}`}
-                label={f}
-                onClick={() => void doExport(f)}
-              />
-            ))}
-          </>
+          <Btn
+            id="export"
+            label="Export…"
+            variant="success"
+            onClick={() => setShowExport(true)}
+          />
         )}
+      </div>
+
+      {showExport && transcript && (
+        <ExportSheet
+          title={transcript.title}
+          selected={exportFmt}
+          onSelect={setExportFmt}
+          onCancel={() => setShowExport(false)}
+          onSave={() => void doExport(exportFmt)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Format chooser — a single EXPORT opens this; pick a format, then Save opens
+// the native location dialog. Mirrors the macOS export panel, booth-styled.
+function ExportSheet({
+  title,
+  selected,
+  onSelect,
+  onCancel,
+  onSave,
+}: {
+  title: string;
+  selected: ExportFormat;
+  onSelect: (f: ExportFormat) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  useKeymap({ escape: onCancel, enter: onSave }, [selected]);
+  return (
+    <div className="export-overlay" onClick={onCancel}>
+      <div className="export-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="export-title">EXPORT TRANSCRIPT</div>
+        <div className="export-sub">
+          Choose a format for “{title}”. Save picks the location.
+        </div>
+        <div className="export-grid">
+          {FORMAT_INFO.map((f) => {
+            const on = f.ext === selected;
+            return (
+              <button
+                key={f.ext}
+                type="button"
+                className={`export-opt${on ? " export-opt--on" : ""}`}
+                data-autopilot={`fmt-${f.ext}`}
+                onClick={() => onSelect(f.ext)}
+                onDoubleClick={onSave}
+              >
+                <span className="export-radio">{on ? "◉" : "○"}</span>
+                <span className="export-opt-body">
+                  <span className="export-opt-label">{f.label}</span>
+                  <span className="export-opt-desc">{f.desc}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="export-actions">
+          <Btn id="export-cancel" label="Cancel" onClick={onCancel} />
+          <Btn id="export-save" label="Save…" variant="success" onClick={onSave} />
+        </div>
       </div>
     </div>
   );

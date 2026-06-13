@@ -2,7 +2,7 @@
 //! string-building (no external crate); DOCX uses `docx-rs`; PDF uses `genpdfi`
 //! (a maintained genpdf fork) with the bundled IBM Plex Mono family.
 
-use crate::transcript::{ts_hms, ts_srt, ts_vtt, Transcript};
+use crate::transcript::{paragraphs, ts_hms, ts_srt, ts_vtt, Transcript};
 use anyhow::{Context, Result};
 use std::path::Path;
 
@@ -68,11 +68,12 @@ pub fn render(t: &Transcript, fmt: Format, font_dir: &Path) -> Result<Vec<u8>> {
 // ---- plain-text family --------------------------------------------------
 
 fn txt(t: &Transcript) -> String {
-    t.segments
+    // Readable prose, no timestamps — paragraphs separated by a blank line.
+    paragraphs(&t.segments)
         .iter()
-        .map(|s| s.text.as_str())
+        .map(|p| p.text.clone())
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n\n")
 }
 
 fn srt(t: &Transcript) -> String {
@@ -148,11 +149,11 @@ fn csv_field(s: &str) -> String {
 
 fn html(t: &Transcript) -> String {
     let mut rows = String::new();
-    for s in &t.segments {
+    for p in paragraphs(&t.segments) {
         rows.push_str(&format!(
-            "<div class=\"seg\"><span class=\"ts\">{}</span><span class=\"tx\">{}</span></div>\n",
-            ts_hms(s.start_ms),
-            esc(&s.text)
+            "<div class=\"seg\"><div class=\"ts\">{}</div><p class=\"tx\">{}</p></div>\n",
+            ts_hms(p.start_ms),
+            esc(&p.text)
         ));
     }
     format!(
@@ -160,12 +161,12 @@ fn html(t: &Transcript) -> String {
 <title>{title}</title>\n<style>\n\
 :root{{--cyan:#7fe0ff;--bg:#0a0e14;--dim:rgba(127,224,255,.72)}}\n\
 body{{background:var(--bg);color:var(--cyan);font-family:'IBM Plex Mono',ui-monospace,monospace;\
-max-width:820px;margin:40px auto;padding:0 20px;line-height:1.6}}\n\
+max-width:820px;margin:40px auto;padding:0 20px;line-height:1.7}}\n\
 h1{{font-size:18px;letter-spacing:.04em}}\n\
-.meta{{color:var(--dim);font-size:12px;margin-bottom:24px}}\n\
-.seg{{display:flex;gap:16px;margin:6px 0}}\n\
-.ts{{color:var(--dim);flex:0 0 84px;font-variant-numeric:tabular-nums}}\n\
-.tx{{white-space:pre-wrap}}\n</style></head>\n<body>\n\
+.meta{{color:var(--dim);font-size:12px;margin-bottom:28px}}\n\
+.seg{{margin:22px 0}}\n\
+.ts{{color:var(--dim);font-size:12px;margin-bottom:6px;font-variant-numeric:tabular-nums}}\n\
+.tx{{margin:0}}\n</style></head>\n<body>\n\
 <h1>{title}</h1>\n<div class=\"meta\">{src} · {ssrc}{model} · {dur}</div>\n{rows}</body></html>\n",
         title = esc(&t.title),
         src = esc(&t.source),
@@ -194,12 +195,12 @@ fn docx(t: &Transcript) -> Result<Vec<u8>> {
     let mut doc = Docx::new().add_paragraph(
         Paragraph::new().add_run(Run::new().add_text(&t.title).bold().size(32)),
     );
-    for s in &t.segments {
-        doc = doc.add_paragraph(
-            Paragraph::new()
-                .add_run(Run::new().add_text(format!("[{}] ", ts_hms(s.start_ms))).bold())
-                .add_run(Run::new().add_text(&s.text)),
-        );
+    for p in paragraphs(&t.segments) {
+        doc = doc
+            .add_paragraph(
+                Paragraph::new().add_run(Run::new().add_text(ts_hms(p.start_ms)).bold().size(16)),
+            )
+            .add_paragraph(Paragraph::new().add_run(Run::new().add_text(&p.text)));
     }
     let mut cur = std::io::Cursor::new(Vec::new());
     doc.build()
@@ -232,11 +233,12 @@ fn pdf(t: &Transcript, font_dir: &Path) -> Result<Vec<u8>> {
     .styled(Style::new().with_font_size(8)));
     doc.push(Break::new(1.0));
 
-    for s in &t.segments {
-        let mut p = Paragraph::default();
-        p.push_styled(format!("[{}]  ", ts_hms(s.start_ms)), Style::new().bold());
-        p.push(&s.text);
-        doc.push(p);
+    for para in paragraphs(&t.segments) {
+        doc.push(
+            Paragraph::new(ts_hms(para.start_ms)).styled(Style::new().bold().with_font_size(9)),
+        );
+        doc.push(Paragraph::new(&para.text));
+        doc.push(Break::new(0.65));
     }
 
     let mut buf = Vec::new();

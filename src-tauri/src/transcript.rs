@@ -93,6 +93,63 @@ fn split(ms: u64) -> (u64, u64, u64, u64) {
     )
 }
 
+/// A readable paragraph: a run of segments merged into flowing prose, stamped
+/// with the start time of its first segment.
+pub struct Paragraph {
+    pub start_ms: u64,
+    pub text: String,
+}
+
+/// Group caption-sized segments into readable paragraphs (used by the result
+/// view and the prose exporters — TXT/HTML/DOCX/PDF). Segments are joined with
+/// spaces; a new paragraph starts once the current one is long enough AND ends
+/// on sentence punctuation, or on a clear pause after a shorter sentence.
+pub fn paragraphs(segments: &[Segment]) -> Vec<Paragraph> {
+    const TARGET: usize = 500; // soft max chars before breaking at a sentence
+    const MIN_PAUSE_BREAK: usize = 240; // min chars to break on a pause
+    const PAUSE_MS: u64 = 2000;
+
+    let mut out: Vec<Paragraph> = Vec::new();
+    let mut cur = String::new();
+    let mut start = 0u64;
+    let mut last_end = 0u64;
+
+    for seg in segments {
+        let piece = seg.text.replace('\n', " ");
+        let piece = piece.split_whitespace().collect::<Vec<_>>().join(" ");
+        if piece.is_empty() {
+            continue;
+        }
+        if cur.is_empty() {
+            start = seg.start_ms;
+        } else {
+            let ends_sentence = cur.trim_end().ends_with(['.', '?', '!', '…']);
+            let gap = seg.start_ms.saturating_sub(last_end);
+            let long_enough = cur.len() >= TARGET;
+            let paused = gap >= PAUSE_MS && cur.len() >= MIN_PAUSE_BREAK;
+            if ends_sentence && (long_enough || paused) {
+                out.push(Paragraph {
+                    start_ms: start,
+                    text: std::mem::take(&mut cur),
+                });
+                start = seg.start_ms;
+            }
+        }
+        if !cur.is_empty() {
+            cur.push(' ');
+        }
+        cur.push_str(&piece);
+        last_end = seg.end_ms;
+    }
+    if !cur.is_empty() {
+        out.push(Paragraph {
+            start_ms: start,
+            text: cur,
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,6 +162,34 @@ mod tests {
         assert_eq!(ts_vtt(ms), "01:02:03.004");
         assert_eq!(ts_hms(ms), "01:02:03");
         assert_eq!(ts_srt(0), "00:00:00,000");
+    }
+
+    #[test]
+    fn paragraphs_merge_segments_into_prose() {
+        let seg = |a: u64, b: u64, t: &str| Segment {
+            start_ms: a,
+            end_ms: b,
+            text: t.into(),
+        };
+        // short caption-style lines that form one sentence, then a pause + new one
+        let segs = vec![
+            seg(0, 1000, "90% of"),
+            seg(1000, 2000, "the stuff headed to space"),
+            seg(2000, 3000, "is carried on a rocket."),
+            // long pause → new paragraph (prev ends with '.', but < MIN_PAUSE_BREAK
+            // so it stays merged here; verify space-join + single paragraph)
+            seg(3200, 4000, "Earth orbit is crowded."),
+        ];
+        let paras = paragraphs(&segs);
+        assert_eq!(paras.len(), 1, "short content stays one paragraph");
+        assert_eq!(
+            paras[0].text,
+            "90% of the stuff headed to space is carried on a rocket. Earth orbit is crowded."
+        );
+        assert_eq!(paras[0].start_ms, 0);
+        // newlines inside a segment are flattened to spaces
+        let p2 = paragraphs(&[seg(0, 1, "line one\nline two")]);
+        assert_eq!(p2[0].text, "line one line two");
     }
 
     #[test]
