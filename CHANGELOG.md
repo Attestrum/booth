@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.2 — 2026-06-13
 
 - **Import several scripts from one folder:** importing a `.md`/`.txt` into a
   folder that already holds a booth session no longer fails with "this folder
