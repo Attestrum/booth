@@ -8,9 +8,16 @@ import { Load } from "./screens/Load";
 import { Grouping } from "./screens/Grouping";
 import { Booth } from "./screens/Booth";
 import { Review } from "./screens/Review";
+import { Transcribe, type TranscribeArg } from "./screens/Transcribe";
 import type { Session } from "./lib/session";
 
-export type Screen = "power-on" | "load" | "grouping" | "booth" | "review";
+export type Screen =
+  | "power-on"
+  | "load"
+  | "grouping"
+  | "booth"
+  | "review"
+  | "transcribe";
 
 export default function App() {
   useAutopilot();
@@ -18,6 +25,8 @@ export default function App() {
   // absolute path to the active episode folder + its loaded session
   const [episodeDir, setEpisodeDir] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  // what the Transcribe screen is showing (a fresh job or a saved transcript)
+  const [txArg, setTxArg] = useState<TranscribeArg | null>(null);
 
   const openSession = useCallback((dir: string, s: Session, fresh: boolean) => {
     setEpisodeDir(dir);
@@ -25,11 +34,24 @@ export default function App() {
     setScreen(fresh ? "grouping" : "booth");
   }, []);
 
+  const startTranscribe = useCallback((arg: TranscribeArg) => {
+    setTxArg(arg);
+    setScreen("transcribe");
+  }, []);
+
   return (
     <>
       <div className="titlebar-drag" />
       {screen === "power-on" && <PowerOn onDone={() => setScreen("load")} />}
-      {screen === "load" && <Load onOpen={openSession} />}
+      {screen === "load" && (
+        <Load
+          onOpen={openSession}
+          onTranscribe={(kind, value) =>
+            startTranscribe({ mode: "run", kind, value })
+          }
+          onOpenTranscript={(id) => startTranscribe({ mode: "open", id })}
+        />
+      )}
       {screen === "grouping" && episodeDir && session && (
         <Grouping
           episodeDir={episodeDir}
@@ -61,6 +83,9 @@ export default function App() {
             setScreen("booth");
           }}
         />
+      )}
+      {screen === "transcribe" && txArg && (
+        <Transcribe arg={txArg} onBack={() => setScreen("load")} />
       )}
       {screen !== "power-on" && <HelpOverlay />}
       <Scanlines />

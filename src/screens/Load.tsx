@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { downloadDir } from "@tauri-apps/api/path";
 import {
   addProject,
+  deleteTranscript,
   getRecents,
   importScript,
   listEpisodes,
+  listTranscripts,
   openEpisode,
   scanSessions,
 } from "../lib/ipc";
 import type { SessionSummary } from "../lib/ipc";
+import type { TranscriptSummary } from "../lib/transcript";
 import { playSfx } from "../lib/sfx";
 import { useKeymap } from "../hooks/useKeymap";
 import { Btn } from "../components/Btn";
 import type { Session } from "../lib/session";
+
+const MEDIA_EXTS = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "mp4", "mov", "m4v"];
 
 interface Row {
   dir: string;
@@ -26,12 +32,18 @@ interface Row {
 // First run shows an empty state with OPEN FOLDER.
 export function Load({
   onOpen,
+  onTranscribe,
+  onOpenTranscript,
 }: {
   onOpen: (dir: string, s: Session, fresh: boolean) => void;
+  onTranscribe: (kind: "url" | "file", value: string) => void;
+  onOpenTranscript: (id: string) => void;
 }) {
   const [rows, setRows] = useState<Row[] | null>(null); // null = scanning
   const [sel, setSel] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [url, setUrl] = useState("");
+  const [transcripts, setTranscripts] = useState<TranscriptSummary[]>([]);
 
   const rescan = useCallback(async () => {
     const roots = await getRecents();
@@ -60,6 +72,9 @@ export function Load({
     }
     setRows(all);
     setSel((s) => Math.max(0, Math.min(s, all.length - 1)));
+    listTranscripts()
+      .then(setTranscripts)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -89,6 +104,39 @@ export function Load({
       onOpen(row.dir, session, fresh);
     } catch (e) {
       playSfx("error");
+      setError(String(e));
+    }
+  };
+
+  const submitUrl = () => {
+    const u = url.trim();
+    if (!u) return;
+    playSfx("toggle");
+    onTranscribe("url", u);
+  };
+
+  const pickMediaFile = async () => {
+    try {
+      const file = await openDialog({
+        title: "Choose an audio or video file to transcribe",
+        defaultPath: await downloadDir().catch(() => undefined),
+        filters: [{ name: "Audio / Video", extensions: MEDIA_EXTS }],
+      });
+      if (typeof file !== "string") return;
+      playSfx("toggle");
+      onTranscribe("file", file);
+    } catch (e) {
+      playSfx("error");
+      setError(String(e));
+    }
+  };
+
+  const removeTranscript = async (id: string) => {
+    try {
+      await deleteTranscript(id);
+      playSfx("nav", 0.3);
+      setTranscripts((ts) => ts.filter((t) => t.id !== id));
+    } catch (e) {
       setError(String(e));
     }
   };
@@ -131,6 +179,7 @@ export function Load({
       },
       o: () => void openFolder(),
       i: () => void importFile(),
+      f: () => void pickMediaFile(),
       r: () => {
         playSfx("nav", 0.3);
         void rescan().catch((e) => setError(String(e)));
@@ -146,7 +195,7 @@ export function Load({
     root.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
 
   return (
-    <div className="screen" style={{ padding: "72px 90px 32px" }}>
+    <div className="screen" style={{ padding: "72px 90px 64px" }}>
       <div
         style={{
           color: "var(--dim-cyan)",
@@ -156,6 +205,31 @@ export function Load({
         }}
       >
         ATTESTRUM // BOOTH ▸ SELECT TRANSMISSION
+      </div>
+
+      <div className="tx-bar">
+        <span className="tx-bar-label">TRANSCRIBE ▸</span>
+        <input
+          className="url-input"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submitUrl();
+            else if (e.key === "Escape") (e.target as HTMLInputElement).blur();
+          }}
+          placeholder="paste a youtube / tiktok / video link …"
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+        />
+        <Btn id="tx-file" label="⌁ File" hint="f" onClick={() => void pickMediaFile()} />
+        <Btn
+          id="tx-go"
+          label="Transcribe"
+          variant="success"
+          disabled={!url.trim()}
+          onClick={submitUrl}
+        />
       </div>
 
       <div style={{ overflowY: "auto", flex: 1 }}>
@@ -219,6 +293,64 @@ export function Load({
             </div>
           );
         })}
+
+        {transcripts.length > 0 && (
+          <>
+            <div
+              style={{
+                color: "var(--dim-cyan)",
+                fontSize: 10,
+                letterSpacing: "0.25em",
+                margin: "18px 0 8px",
+                borderBottom: "1px solid var(--faint-cyan)",
+                paddingBottom: 4,
+              }}
+            >
+              ◢ TRANSCRIPTS
+            </div>
+            {transcripts.map((t) => (
+              <div
+                key={t.id}
+                className="load-row"
+                data-autopilot={`transcript-${t.id}`}
+                onClick={() => {
+                  playSfx("toggle");
+                  onOpenTranscript(t.id);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 24,
+                  padding: "14px 18px",
+                  marginBottom: 6,
+                  border: "1px solid var(--faint-cyan)",
+                  color: "var(--dim-cyan)",
+                }}
+              >
+                <span style={{ fontSize: 11, letterSpacing: "0.2em", width: 70 }}>
+                  OPEN
+                </span>
+                <span style={{ flex: 1, letterSpacing: "0.08em", fontSize: 15 }}>
+                  {t.title}
+                </span>
+                <span style={{ fontSize: 11, textAlign: "right" }}>
+                  {t.segmentSource} · {fmtDur(t.durationSec)} · {t.nSegments} seg
+                </span>
+                <button
+                  className="take-delete"
+                  title="Delete transcript"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void removeTranscript(t.id);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </>
+        )}
+
         {rows === null && !error && (
           <div style={{ color: "var(--dim-cyan)" }}>scanning…</div>
         )}
@@ -311,6 +443,14 @@ export function Load({
       </div>
     </div>
   );
+}
+
+function fmtDur(sec: number) {
+  const s = Math.round(sec);
+  const p = (n: number) => String(n).padStart(2, "0");
+  const h = Math.floor(s / 3600);
+  const rest = `${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
+  return h > 0 ? `${h}:${rest}` : rest;
 }
 
 function Progress({ done, total }: { done: number; total: number }) {
