@@ -33,6 +33,29 @@ Recording is crash-safe: takes are 24-bit WAVs flushed continuously; a crash
 mid-take is auto-repaired on next launch. Sessions resume exactly where you
 left off.
 
+## Transcribe (URL or file)
+
+The Load screen also transcribes — paste a video link (YouTube / TikTok /
+Instagram / Facebook) or pick a local audio/video file (`⌁ FILE`). It's a
+**local, personal** feature: everything runs on your machine, any downloaded
+media is transient and deleted immediately, and the output is **transcript text
+only**.
+
+- **URLs prefer existing captions.** If the video already has a caption track,
+  Booth imports it (no transcription compute) — instant and tagged `manual-subs`
+  or `auto-subs`. Only when there are no captions does it download the audio and
+  run Whisper locally (`large-v3-turbo`, Metal GPU; the ~1.6 GB model downloads
+  once on first use). Caption-skip is reliable mainly on YouTube; TikTok/IG/FB
+  usually take the Whisper path.
+- **Local files** always transcribe with Whisper.
+- **Export** the result as TXT, SRT, VTT, JSON, CSV, HTML, DOCX, or PDF.
+- Saved transcripts appear in a **TRANSCRIPTS** group on the Load screen,
+  re-openable and exportable any time.
+
+> YouTube now gates requests behind a bot check, so Booth passes your **Chrome**
+> browser cookies to yt-dlp (`--cookies-from-browser`). Keep Chrome installed
+> and signed in; macOS may ask once for keychain access.
+
 ## Key vocabulary
 
 | Key | Action |
@@ -72,11 +95,16 @@ export is built in and always works.
 git clone https://github.com/Attestrum/booth
 cd booth
 npm install
+bash src-tauri/scripts/fetch-yt-dlp.sh   # one-time: fetch the yt-dlp sidecar
 npm run tauri dev      # live dev (Rust + Vite HMR)
 npm run tauri build    # release .app → src-tauri/target/release/bundle/macos/
 ```
 
-Requires Rust (stable, via `rust-toolchain.toml`) and Node 22+. To produce a
+Requires Rust (stable, via `rust-toolchain.toml`), Node 22+, and **cmake**
+(`brew install cmake`) — the transcription engine builds whisper.cpp from source
+with the Metal backend. The yt-dlp sidecar is git-ignored; the fetch script
+above pulls the latest build (re-run it periodically as sites change). The
+Whisper model is **not** bundled — it downloads to app-data on first use. To produce a
 signed local build, export `APPLE_SIGNING_IDENTITY` with a certificate from
 your own keychain — unsigned builds work but macOS resets the microphone
 permission on every rebuild.

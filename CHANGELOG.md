@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Transcription — paste a link or pick a file:** the Load screen now
+  transcribes. Paste a YouTube / TikTok / Instagram / Facebook link or choose a
+  local audio/video file. URLs import an existing caption track when there is one
+  (instant, no compute, tagged `manual-subs` / `auto-subs`) and otherwise
+  download the audio and run Whisper locally (`large-v3-turbo` on the Metal GPU;
+  the model downloads once on first use). Results are timestamped, saved to a
+  re-openable **TRANSCRIPTS** library, and exportable as TXT / SRT / VTT / JSON /
+  CSV / HTML / DOCX / PDF. Local, personal, transcript-only: downloaded media is
+  transient and deleted immediately. (YouTube uses your Chrome cookies to clear
+  its bot check.)
 - **Legibility pass — no more faded text:** the secondary text floor was raised
   (`--dim-cyan` 0.45→0.72) and a dedicated soft tier (`--dim-cyan-soft`) replaces
   the old habit of stacking `opacity` on top of dim (which dragged some rows as
