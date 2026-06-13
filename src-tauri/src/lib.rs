@@ -1,5 +1,9 @@
 mod audio;
 mod config;
+// Audio decode (symphonia + rubato → 16 kHz mono f32). Consumed by the
+// transcribe engine (Phase 2); allow until then.
+#[allow(dead_code)]
+mod decode;
 mod export;
 mod script;
 mod session;
@@ -12,6 +16,10 @@ mod transcript;
 #[allow(dead_code)]
 mod transcript_export;
 mod wav;
+// Whisper (whisper.cpp + Metal) wrapper. Consumed by the transcribe engine
+// (Phase 2); allow until then.
+#[allow(dead_code)]
+mod whisper;
 
 use audio::{AudioEngine, DeviceInfo};
 use serde::Serialize;
