@@ -27,10 +27,14 @@ flowchart TD
     LOAD -->|"R / RESCAN button"| LOAD
     LOAD -->|"J/K move selection"| LOAD
     LOAD -->|"paste URL ⏎ / ⌁ FILE\n(audio/video → transcribe)"| TRANSCRIBE
-    LOAD -->|"click saved transcript row\n(TRANSCRIPTS group)"| TRANSCRIBE
+    LOAD -->|"T / TRANSCRIPTS"| TRANSCRIPTS
+
+    TRANSCRIPTS["TRANSCRIPTS — saved-transcript library\n(search / sort / filter / reveal in Finder)"]
+    TRANSCRIPTS -->|"click a row"| TRANSCRIBE
+    TRANSCRIPTS -->|"Esc / ‹ Back"| LOAD
 
     TRANSCRIBE["TRANSCRIBE — URL/file → captions-or-Whisper,\nresult + 8-format export (section 7)"]
-    TRANSCRIBE -->|"Esc / ‹ back"| LOAD
+    TRANSCRIBE -->|"Esc / ‹ Back"| LOAD
 
     GROUP["TRANSCRIPT — full segment list,\nmerge/split passages"]
     GROUP -->|"Enter / BEGIN ▸ BOOTH\n(cursor = SELECTED row)"| BOOTH
