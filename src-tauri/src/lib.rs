@@ -24,6 +24,10 @@ mod wav;
 // (Phase 2); allow until then.
 #[allow(dead_code)]
 mod whisper;
+// yt-dlp sidecar: caption probe + audio download. Consumed by the transcribe
+// engine (Phase 2); allow until then.
+#[allow(dead_code)]
+mod ytdlp;
 
 use audio::{AudioEngine, DeviceInfo};
 use serde::Serialize;

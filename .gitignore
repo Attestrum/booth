@@ -15,6 +15,9 @@ dist-ssr
 # MCP / tooling scratch
 .playwright-mcp/
 
+# yt-dlp sidecar — fetched via src-tauri/scripts/fetch-yt-dlp.sh (large, stale-prone)
+src-tauri/binaries/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
