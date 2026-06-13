@@ -28,14 +28,31 @@ export const setRecordingGate = (armed: boolean) => {
 
 const pool = new Map<SfxName, HTMLAudioElement>();
 
-export function playSfx(name: SfxName, volume = 0.5) {
-  if (recordingGate) return; // never bleed into the mic
+// Resolves when the cue finishes (or is denied) — callers that must not let a
+// cue bleed into the mic (record start) can `await` it before opening the stream.
+export function playSfx(name: SfxName, volume = 0.5): Promise<void> {
+  if (recordingGate) return Promise.resolve(); // never bleed into the mic
   let el = pool.get(name);
   if (!el) {
     el = new Audio(SOURCES[name]);
     pool.set(name, el);
   }
-  el.volume = volume;
-  el.currentTime = 0;
-  void el.play().catch(() => {}); // pre-gesture autoplay denial is fine
+  const sfx = el;
+  sfx.volume = volume;
+  sfx.currentTime = 0;
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      sfx.removeEventListener("ended", finish);
+      resolve();
+    };
+    sfx.addEventListener("ended", finish, { once: true });
+    // safety net: never block the caller longer than the clip itself
+    const ms =
+      (Number.isFinite(sfx.duration) && sfx.duration > 0 ? sfx.duration * 1000 : 800) + 120;
+    window.setTimeout(finish, ms);
+    void sfx.play().catch(() => finish()); // pre-gesture autoplay denial is fine
+  });
 }

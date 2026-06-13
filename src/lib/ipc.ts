@@ -64,6 +64,8 @@ export const editUnitText = (dir: string, unit: number, text: string) =>
   invoke<[Session, string[]]>("edit_unit_text", { dir, unit, text });
 export const takePath = (dir: string, file: string) =>
   invoke<string>("take_path", { dir, file });
+export const takeWaveform = (dir: string, file: string, buckets: number) =>
+  invoke<number[]>("take_waveform", { dir, file, buckets });
 
 // ---- export (P4) ----
 export const ffmpegStatus = () => invoke<boolean>("ffmpeg_status");

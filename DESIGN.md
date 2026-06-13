@@ -72,17 +72,20 @@ first). Unsupported extensions are rejected naming .md/.txt.
 stateDiagram-v2
     [*] --> Idle
 
-    Idle --> Recording : Space / ● REC\n(busy-guard serialises invoke)
-    Recording --> Idle : Space / ■ STOP\n(take pushed, ping sfx)
+    Idle --> Recording : R / ● REC\n(busy-guard serialises invoke)
+    Recording --> Idle : R / ■ STOP\n(take pushed, ping sfx)
     Recording --> Idle : start/stop error\n(amber error chip)
 
-    Idle --> Playing : P / ▶ PLAY (top take exists)
-    Playing --> Idle : P again · playback ends ·\nnav · record · accept · Esc
+    Idle --> Playing : Space / ▶ PLAY (selected take exists)
+    Playing --> Paused : Space / ❚❚ PAUSE (holds position)
+    Paused --> Playing : Space / ▶ RESUME
+    Playing --> Idle : playback ends ·\nnav · record · accept · Esc · cursor move
+    Paused --> Idle : nav · record · accept · Esc · cursor move
 
-    Idle --> RevertArmed : R / ↩ REVERT (takes > 0)\ntop card turns amber
+    Idle --> RevertArmed : D / ↩ REVERT (takes > 0)\nnewest card turns amber
     RevertArmed --> Idle : 600 ms timeout
     RevertArmed --> Idle : nav / record / accept / Esc\n(DISARMS — gap fix #1)
-    RevertArmed --> UndoWindow : R again / CONFIRM ↩\n(take → discarded/)
+    RevertArmed --> UndoWindow : D again / CONFIRM ↩\n(take → discarded/)
 
     Idle --> UndoWindow : ✕ on ANY take card (single click)\n(that take → discarded/)
 
@@ -213,13 +216,19 @@ classDiagram
     class Passage {
         unitStart: number  // inclusive
         unitEnd: number    // inclusive, contiguous coverage
-        takes: Take[]      // stack — LAST is the kept take
+        takes: Take[]      // newest last
         accepted: boolean
+        selected?: number  // kept-take index; unset/oob = newest
     }
     class Take {
         file: string       // pNNN_tNN.wav
-        durationSec: number
+        durationSec: number // original full length (never mutated)
         recovered?: true
+        cuts?: Cut[]       // non-destructive spans to REMOVE (edges + interior)
+    }
+    class Cut {
+        startSec: number
+        endSec: number
     }
     class AudioFormat {
         sampleRate: number
@@ -235,6 +244,7 @@ classDiagram
     Session "1" --> "*" ScriptUnit
     Session --> AudioFormat
     Passage "1" --> "*" Take
+    Take "1" --> "*" Cut
 ```
 
 **Invariants:** passages tile `units` contiguously (no gaps/overlaps); merge/split are only legal
@@ -270,5 +280,9 @@ on take-less passages; `cursor` is always clamped to a valid index.
 | 21 | No in-app documentation — a stranger has to find the README to learn the keys | onboarding | `?` modal cheat-sheet on every screen (HelpOverlay; swallows all keys while open so reading help can't trigger a recording), KEY BINDINGS corner button (was a faint `?` dot) |
 | 22 | Recording input was locked to the OS default device — switching mics meant a trip to Control Center | founder directive | the top-rail device label is a picker: any input or System default; persisted in config.json, falls back to default when the device disappears |
 | 23 | Text kept regressing to the faint tier (TAKES, RECORDED, help footer…) — repeated founder corrections | readability rule | **`--faint-cyan` is for borders/fills ONLY, never text** (rule pinned at the top of booth.css); text floor is `--dim-cyan`, de-emphasis via opacity on top of dim |
+| 24 | With >1 take you couldn't choose which one was kept — `topTake`/`.last()` hardcoded "newest = kept" across play, accept, and export; take rows weren't even clickable. And no way to trim dead air off a take. | founder directive | **Selectable takes:** `Passage.selected` index (unset = newest, resets on record/delete); clicking a take row makes it the kept take that plays/accepts/exports (`selected_take` in TS + Rust). **Inline non-destructive cuts (Audacity ripple):** the strip shows the selected take's EDITED timeline — click=cursor, drag=select, `Del`=cut; cut audio leaves the timeline (waveform closes the gap) and a thin break stub marks the splice (click a stub to restore that cut; `↩ RESTORE` reverts the take). Stored as `Take.cuts[]` in ORIGINAL seconds (the WAV is never modified); the editor maps original↔kept time for display. `Take::kept_spans` derives the complement; applied at playback (skip cuts) and export (`concat_wavs_segments`, sample-exact, survives resample). New `take_waveform` command feeds the static envelope. Editor interaction modeled on Audacity (gap #25). |
+| 27 | Export always wrote a generic `narration/voice.wav` + `voice.mp3`, backing the prior one up as a timestamped `.bak` — every render lumped into one folder under one name, easy to lose / hard to tell apart. | founder directive | Export writes `<document>.wav` / `<document>.mp3` (from `session.episode`, sanitized) directly in the episode dir (next to the source), with ` (N)` dedup so a re-export never clobbers (`export_stem` + `dedup_base`). Replaces the `backup()`/`replaced/` scheme (gap #3). |
+| 26 | Playing a take with cuts clicked and stuttered at every splice — playback seeked an `<audio>` element's `currentTime` at each cut (decoder restart → click) on the coarse ~4 Hz `timeupdate` event (visual stutter). | quality | `useTakePlayer` (Web Audio): decode the WAV once into an `AudioBuffer`, schedule the kept spans back-to-back via `AudioBufferSourceNode.start(when, offset, dur)` on the `AudioContext` clock (sample-accurate, gapless) with a ~6 ms GainNode edge ramp to kill the splice click; playhead read from the audio clock via rAF (smooth, mapped original→kept for display). Play now matches export. |
+| 25 | Transport keys fought editor muscle memory — `Space` = Record / `P` = Play / `R·R` = Revert, the inverse of every audio editor, so reaching for Space-to-play armed a take instead. And the record cue bled into the head of each take (the SFX fired but the mic opened before it finished). | founder directive | **Audacity transport:** `Space` = Play/**Pause** (resumes in place; cursor/selection change resets), `R` = Record/Stop, `D·D` = Revert (double-tap). Waveform: click = cursor, drag = selection, `Del` = cut, `✕` = restore — modeled on Audacity. **Cue no longer bleeds:** `playSfx` resolves on end and the record path `await`s the cue before opening the mic. Help overlay / README / RecBtn / state diagram updated. |
 
 Future gaps: add the transition to the diagram FIRST, then implement, then append a row here.

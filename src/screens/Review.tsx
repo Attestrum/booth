@@ -5,7 +5,7 @@ import { useKeymap } from "../hooks/useKeymap";
 import { GlitchFlash } from "../components/GlitchFlash";
 import { Btn } from "../components/Btn";
 import type { Session } from "../lib/session";
-import { passageText, topTake } from "../lib/session";
+import { keptDuration, passageText, selectedTake } from "../lib/session";
 
 const fmt = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -59,7 +59,11 @@ export function Review({
   const recorded = session.passages.filter((p) => p.takes.length > 0);
   const missing = session.passages.length - recorded.length;
   const runtime =
-    recorded.reduce((s, p) => s + (topTake(p)?.durationSec ?? 0), 0) +
+    recorded.reduce((s, p) => {
+      const t = selectedTake(p);
+      // runtime reflects the kept length after cuts, not the original
+      return s + (t ? keptDuration(t) : 0);
+    }, 0) +
     Math.max(0, session.passages.length - 1) * 0.35;
 
   const runExport = async (allowPartial: boolean) => {
@@ -121,8 +125,10 @@ export function Review({
     [session, missing, sel],
   );
 
+  // extra bottom padding keeps the export controls clear of the fixed
+  // KEY BINDINGS button pinned to the bottom-right corner
   return (
-    <div className="screen" style={{ padding: "56px 70px 28px" }}>
+    <div className="screen" style={{ padding: "56px 70px 64px" }}>
       <div
         style={{
           color: "var(--dim-cyan)",
@@ -136,7 +142,7 @@ export function Review({
 
       <div ref={listRef} style={{ overflowY: "auto", flex: 1 }}>
         {session.passages.map((p, i) => {
-          const t = topTake(p);
+          const t = selectedTake(p);
           const active = i === sel;
           return (
             <div

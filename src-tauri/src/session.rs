@@ -23,6 +23,52 @@ pub struct Take {
     pub duration_sec: f64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub recovered: bool,
+    /// Non-destructive cuts: seconds-ranges to REMOVE (head, tail, or interior
+    /// dead air). The original WAV is never modified; cuts are applied at
+    /// playback and export. Absent/empty = keep the whole take.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cuts: Vec<Cut>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Cut {
+    pub start_sec: f64,
+    pub end_sec: f64,
+}
+
+impl Take {
+    /// Spans (seconds) to KEEP: [0, duration] minus the cut intervals,
+    /// normalized (clamped, sorted, merged). No cuts → one full span.
+    pub fn kept_spans(&self) -> Vec<(f64, f64)> {
+        let dur = self.duration_sec;
+        let mut cuts: Vec<(f64, f64)> = self
+            .cuts
+            .iter()
+            .map(|c| (c.start_sec.clamp(0.0, dur), c.end_sec.clamp(0.0, dur)))
+            .filter(|(s, e)| e - s > 0.0)
+            .collect();
+        cuts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut merged: Vec<(f64, f64)> = Vec::new();
+        for (s, e) in cuts {
+            match merged.last_mut() {
+                Some(last) if s <= last.1 + 1e-6 => last.1 = last.1.max(e),
+                _ => merged.push((s, e)),
+            }
+        }
+        let mut spans = Vec::new();
+        let mut pos = 0.0;
+        for (s, e) in merged {
+            if s > pos {
+                spans.push((pos, s));
+            }
+            pos = pos.max(e);
+        }
+        if pos < dur {
+            spans.push((pos, dur));
+        }
+        spans
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -32,6 +78,22 @@ pub struct Passage {
     pub unit_end: usize,
     pub takes: Vec<Take>,
     pub accepted: bool,
+    /// Index of the take the user selected as the kept one. Absent (or out of
+    /// range) resolves to the newest take — see `selected_take`. Reset to None
+    /// on any stack mutation so a fresh recording auto-selects the newest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected: Option<usize>,
+}
+
+impl Passage {
+    /// The kept take: the explicitly-selected one if valid, else the newest
+    /// (last). Single source of truth for play / accept / export.
+    pub fn selected_take(&self) -> Option<&Take> {
+        match self.selected {
+            Some(i) if i < self.takes.len() => Some(&self.takes[i]),
+            _ => self.takes.last(),
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -111,6 +173,7 @@ pub fn open(episode_dir: &Path, now_iso: String) -> Result<(Session, bool)> {
             unit_end,
             takes: Vec::new(),
             accepted: false,
+            selected: None,
         })
         .collect();
     let episode = episode_dir
@@ -269,6 +332,8 @@ pub fn discard_at(
     if was_top {
         p.accepted = false;
     }
+    // any stack mutation resets selection to the newest take
+    p.selected = None;
     let from = takes_dir(episode_dir).join(&take.file);
     let to_dir = discarded_dir(episode_dir);
     fs::create_dir_all(&to_dir)?;
@@ -348,6 +413,7 @@ mod tests {
             file: name.into(),
             duration_sec: 1.0,
             recovered: false,
+            cuts: vec![],
         };
         let mut s = Session {
             schema: 1,
@@ -360,6 +426,7 @@ mod tests {
                 unit_end: 0,
                 takes: vec![take("a.wav"), take("b.wav"), take("c.wav")],
                 accepted: true,
+                selected: Some(2),
             }],
             cursor: 0,
             created_at: "2026-06-12T00:00:00Z".into(),
@@ -370,6 +437,8 @@ mod tests {
         let t = discard_at(&tmp, &mut s, 0, 1).unwrap();
         assert_eq!(t.file, "b.wav");
         assert!(s.passages[0].accepted);
+        // any discard resets selection to newest
+        assert_eq!(s.passages[0].selected, None);
         let files: Vec<_> = s.passages[0].takes.iter().map(|t| t.file.as_str()).collect();
         assert_eq!(files, ["a.wav", "c.wav"]);
         // top delete clears accepted (same semantics as revert)
@@ -381,6 +450,29 @@ mod tests {
         assert!(discard_at(&tmp, &mut s, 9, 0).is_err());
         discard_at(&tmp, &mut s, 0, 0).unwrap();
         assert!(discard_top(&tmp, &mut s, 0).is_err());
+    }
+
+    #[test]
+    fn kept_spans_handles_edges_and_interior() {
+        let mk = |cuts: Vec<(f64, f64)>| Take {
+            file: "x.wav".into(),
+            duration_sec: 10.0,
+            recovered: false,
+            cuts: cuts
+                .into_iter()
+                .map(|(s, e)| Cut { start_sec: s, end_sec: e })
+                .collect(),
+        };
+        // no cuts → whole take
+        assert_eq!(mk(vec![]).kept_spans(), vec![(0.0, 10.0)]);
+        // interior cut → two kept spans
+        assert_eq!(mk(vec![(4.0, 6.0)]).kept_spans(), vec![(0.0, 4.0), (6.0, 10.0)]);
+        // edge trims collapse the outer spans
+        assert_eq!(mk(vec![(0.0, 2.0), (8.0, 10.0)]).kept_spans(), vec![(2.0, 8.0)]);
+        // overlapping/adjacent cuts merge
+        assert_eq!(mk(vec![(2.0, 5.0), (4.0, 7.0)]).kept_spans(), vec![(0.0, 2.0), (7.0, 10.0)]);
+        // a cut spanning the whole take keeps nothing
+        assert!(mk(vec![(0.0, 10.0)]).kept_spans().is_empty());
     }
 
     #[test]
@@ -595,12 +687,13 @@ pub fn undo_discard(
         bail!("discarded take {} no longer on disk", take.file);
     }
     fs::rename(&from, takes_dir(episode_dir).join(&take.file))?;
-    session
+    let p = session
         .passages
         .get_mut(passage)
-        .ok_or_else(|| anyhow!("passage {passage} out of range"))?
-        .takes
-        .push(take);
+        .ok_or_else(|| anyhow!("passage {passage} out of range"))?;
+    p.takes.push(take);
+    // restored take becomes the newest — reset selection to it
+    p.selected = None;
     save(episode_dir, session)?;
     Ok(())
 }

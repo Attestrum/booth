@@ -3,13 +3,13 @@
 // contract). Existing outputs are backed up to booth/replaced/ first.
 use crate::session::{self, Session};
 use crate::wav;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Emitter};
 
-const GAP_MS: u32 = 350; // breath room between passages
+const GAP_MS: u32 = 0; // no gap between passages — beats abut directly (founder)
 
 fn emit(app: &AppHandle, msg: &str) {
     let _ = app.emit("export:progress", msg.to_string());
@@ -120,25 +120,42 @@ fn normalize_rates(inputs: &[PathBuf], progress: &dyn Fn(&str)) -> Result<Vec<Pa
     Ok(out)
 }
 
-/// Timestamped backup names so a second export can NEVER clobber the first
-/// backup (DESIGN.md gap fix #3 — the original could be an ElevenLabs track).
-fn backup(narration: &Path, episode_dir: &Path, name: &str) -> Result<()> {
-    let target = narration.join(name);
-    if target.exists() {
-        let dir = session::booth_dir(episode_dir).join("replaced");
-        fs::create_dir_all(&dir)?;
-        let mut ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let mut dest = dir.join(format!("{name}.{ts}.bak"));
-        while dest.exists() {
-            ts += 1;
-            dest = dir.join(format!("{name}.{ts}.bak"));
-        }
-        fs::rename(&target, &dest).with_context(|| format!("backup {name}"))?;
+/// Filesystem-safe stem from the document/episode name: keep spaces, replace
+/// path separators / control chars, never empty.
+fn export_stem(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' => '-',
+            c if c.is_control() => '-',
+            c => c,
+        })
+        .collect();
+    let trimmed = cleaned.trim().trim_matches('.').trim();
+    if trimmed.is_empty() {
+        "voice".to_string()
+    } else {
+        trimmed.to_string()
     }
-    Ok(())
+}
+
+/// A stem under `dir` for which neither `<stem>.wav` nor `<stem>.mp3` exists —
+/// appends " (1)", " (2)", … so a re-export NEVER overwrites a prior one
+/// (gap #27; supersedes the timestamped-backup scheme of gap #3).
+fn dedup_base(dir: &Path, stem: &str) -> String {
+    let taken =
+        |s: &str| dir.join(format!("{s}.wav")).exists() || dir.join(format!("{s}.mp3")).exists();
+    if !taken(stem) {
+        return stem.to_string();
+    }
+    let mut n = 1;
+    loop {
+        let cand = format!("{stem} ({n})");
+        if !taken(&cand) {
+            return cand;
+        }
+        n += 1;
+    }
 }
 
 #[cfg(test)]
@@ -146,21 +163,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn backups_never_clobber() {
-        let ep = std::env::temp_dir().join("booth-export-test/ep");
-        let _ = fs::remove_dir_all(&ep);
-        let narration = ep.join("narration");
-        fs::create_dir_all(&narration).unwrap();
+    fn export_names_after_document_and_dedups() {
+        // stem sanitation: path separators out, spaces kept, never empty
+        assert_eq!(export_stem("My Script"), "My Script");
+        assert_eq!(export_stem("a/b:c"), "a-b-c");
+        assert_eq!(export_stem("   "), "voice");
 
-        for content in ["first", "second"] {
-            fs::write(narration.join("voice.mp3"), content).unwrap();
-            backup(&narration, &ep, "voice.mp3").unwrap();
-        }
-        let replaced = session::booth_dir(&ep).join("replaced");
-        let baks: Vec<_> = fs::read_dir(&replaced).unwrap().flatten().collect();
-        assert_eq!(baks.len(), 2, "both backups must survive");
-        backup(&narration, &ep, "voice.mp3").unwrap(); // no target — no-op
-        assert_eq!(fs::read_dir(&replaced).unwrap().count(), 2);
+        let dir = std::env::temp_dir().join("booth-export-test/dedup");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // first export claims the bare name
+        assert_eq!(dedup_base(&dir, "doc"), "doc");
+        fs::write(dir.join("doc.wav"), "x").unwrap();
+        // a clashing wav (or mp3) bumps to " (1)", then " (2)"
+        assert_eq!(dedup_base(&dir, "doc"), "doc (1)");
+        fs::write(dir.join("doc (1).mp3"), "x").unwrap();
+        assert_eq!(dedup_base(&dir, "doc"), "doc (2)");
     }
 
     fn make_wav(path: &Path, rate: u32, secs: f64) {
@@ -231,29 +249,32 @@ pub fn export(
     }
 
     let takes_dir = session::takes_dir(episode_dir);
-    let inputs: Vec<PathBuf> = session
-        .passages
-        .iter()
-        .filter_map(|p| p.takes.last())
-        .map(|t| takes_dir.join(&t.file))
-        .collect();
+    // selected take per passage, with its kept (non-cut) spans — kept aligned so
+    // spans[i] belongs to inputs[i] (normalize_rates preserves order).
+    let mut inputs: Vec<PathBuf> = Vec::new();
+    let mut spans: Vec<Vec<(f64, f64)>> = Vec::new();
+    for p in &session.passages {
+        if let Some(t) = p.selected_take() {
+            inputs.push(takes_dir.join(&t.file));
+            spans.push(t.kept_spans());
+        }
+    }
     if inputs.is_empty() {
         bail!("nothing recorded yet");
     }
 
-    let narration = episode_dir.join("narration");
-    fs::create_dir_all(&narration)?;
-    backup(&narration, episode_dir, "voice.wav")?;
-    backup(&narration, episode_dir, "voice.mp3")?;
+    // export lands NEXT TO the document, named after it; a re-export never
+    // clobbers — it gets a " (N)" suffix (founder 2026-06-12, gap #27).
+    let base = dedup_base(episode_dir, &export_stem(&session.episode));
 
     let inputs = normalize_rates(&inputs, &|m| emit(app, m))?;
     emit(app, &format!("CONCAT ▸ {} TAKES", inputs.len()));
-    let wav_out = narration.join("voice.wav");
-    wav::concat_wavs(&inputs, GAP_MS, &wav_out)?;
+    let wav_out = episode_dir.join(format!("{base}.wav"));
+    wav::concat_wavs_segments(&inputs, &spans, GAP_MS, &wav_out)?;
 
     let mp3_out = if let Some(ffmpeg) = ffmpeg_available() {
-        emit(app, "ENCODE ▸ voice.mp3");
-        let mp3 = narration.join("voice.mp3");
+        emit(app, &format!("ENCODE ▸ {base}.mp3"));
+        let mp3 = episode_dir.join(format!("{base}.mp3"));
         let status = Command::new(ffmpeg)
             .args([
                 "-y",
@@ -276,7 +297,7 @@ pub fn export(
         }
         Some(mp3)
     } else {
-        emit(app, "NO FFMPEG ▸ voice.wav only (brew install ffmpeg for mp3)");
+        emit(app, &format!("NO FFMPEG ▸ {base}.wav only (brew install ffmpeg for mp3)"));
         None
     };
 

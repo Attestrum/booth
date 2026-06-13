@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 
 const ROWS: [string, string][] = [
-  ["SPACE", "record / stop"],
-  ["P", "play top take"],
-  ["R R", "revert top take (double-tap — moves to discarded/, never deletes)"],
+  ["SPACE", "play / pause the selected take"],
+  ["R", "record / stop"],
+  ["D D", "revert newest take (double-tap — moves to discarded/, never deletes)"],
+  ["click waveform", "set the play cursor · drag to select a span"],
+  ["DEL", "cut the selection (✕ on a red band restores it)"],
   ["✕ on a take card", "delete that take (single click; 5 s undo)"],
+  ["click a take card", "select it as the kept take"],
   ["U", "undo a revert / delete"],
   ["ENTER", "accept take ▸ next passage"],
   ["J / K", "next / previous passage (or row)"],

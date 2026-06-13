@@ -15,13 +15,18 @@ takes, and your exports never leave your machine.
 1. **Load a script** and Booth splits it into recordable passages (sentence
    detection, ~600-character groupings, chapter-aware). Review and adjust the
    grouping in the transcript screen — merge, split, pick where to start.
-2. **Record passage by passage.** Big teleprompter text, `SPACE` to record and
-   stop, takes stack up newest-first. Bad take? Re-record, revert (`R R`), or
-   delete any take with its ✕ — files are moved, never deleted, and a 5-second
-   undo backs every removal.
-3. **Edit the script inline.** Click the teleprompter text, fix the wording,
+2. **Record passage by passage.** Big teleprompter text, `R` to record and
+   stop, takes stack up newest-first. With more than one take, click a take to
+   pick the kept one. Bad take? Re-record, revert (`D D`), or delete any take
+   with its ✕ — files are moved, never deleted, and a 5-second undo backs every
+   removal.
+3. **Trim it.** Selecting a take shows its waveform — click to set the play
+   cursor, drag to select a span, `Del` to cut leading/trailing/mid dead air.
+   Cuts are non-destructive (the WAV is never touched) and applied on play and
+   at export.
+4. **Edit the script inline.** Click the teleprompter text, fix the wording,
    save — the edit writes back to your script file.
-4. **Export** a sample-perfect concatenated `voice.wav` (and `voice.mp3` when
+5. **Export** a sample-perfect concatenated `voice.wav` (and `voice.mp3` when
    ffmpeg is installed), with prior outputs backed up first.
 
 Recording is crash-safe: takes are 24-bit WAVs flushed continuously; a crash
@@ -32,10 +37,12 @@ left off.
 
 | Key | Action |
 |---|---|
-| `SPACE` | record / stop |
-| `P` | play top take |
-| `R R` | revert top take (double-tap; moves to `discarded/`) |
+| `SPACE` | play / pause the selected take |
+| `R` | record / stop |
+| `D D` | revert newest take (double-tap; moves to `discarded/`) |
+| click waveform · drag · `Del` | set play cursor · select a span · cut it |
 | `✕` (take card) | delete that take (single click; 5 s undo) |
+| click a take card | select it as the kept take |
 | `U` | undo a revert/delete |
 | `ENTER` | accept take ▸ next passage |
 | `J` / `K` | next / previous passage |

@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- **No silence between beats on export:** passages now abut directly in the
+  concatenated `voice.wav` (the 350 ms inter-passage "breath room" is gone) —
+  trim any per-take dead air with the waveform editor.
+- **Exports are named after the document, next to it:** Export now writes
+  `<document>.wav` / `<document>.mp3` directly in the source folder (not a generic
+  `voice.*` buried in `narration/`). A re-export never overwrites — it adds
+  ` (1)`, ` (2)`, … so every render is kept as its own file.
+- **Gapless, click-free cut playback:** playing a take with cuts no longer
+  clicks or stutters at the splices. Playback now decodes the take once and
+  schedules the kept spans back-to-back on the Web Audio clock (sample-accurate,
+  short anti-click edge fades) instead of seeking an `<audio>` element — and the
+  playhead is driven off the audio clock, so it sweeps smoothly across cuts.
+- **Audacity-style transport keys:** `SPACE` is now **Play / Pause** (resumes
+  in place), `R` is **Record / Stop**, and Revert is **`D` `D`** (double-tap).
+  This matches every audio editor — reach for Space to audition a take, not to
+  arm one. Buttons and the `?` cheat-sheet updated to match.
+- **Record cue no longer bleeds into the take:** the "going hot" sound now
+  finishes before the mic opens, so it can't appear at the head of a recording.
+- **Selectable takes:** with more than one take on a passage, click any take card
+  to make it the kept one — it becomes what plays, what Accept confirms, and what
+  Export ships. New recordings still auto-select the newest; R·R still discards
+  the newest take.
+- **Inline cuts (remove dead air & flubs), Audacity-style:** when a take is
+  selected, its waveform shows in the strip. Click to set the play cursor, drag
+  to select, `Del` to cut — leading/trailing silence OR a flub in the middle.
+  The cut audio leaves the timeline (the waveform closes the gap, ripple-delete)
+  and a thin **break stub** marks the splice; click a stub to restore that cut,
+  or `↩ RESTORE` to revert the whole take. Multiple cuts per take. Non-destructive
+  — the original WAV is untouched; cuts apply on Play and sample-exactly at Export.
 - Input-device picker: click the device name in the booth's top rail to choose
   any input (or System default). The choice persists and falls back to the OS
   default when the device disappears.

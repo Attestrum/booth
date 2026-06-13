@@ -46,11 +46,11 @@ export function RecBtn({
       className={`rec-btn ${recording ? "rec-btn--live" : ""}`}
       data-autopilot="rec"
       onClick={onClick}
-      title={recording ? "Stop (Space)" : "Record (Space)"}
+      title={recording ? "Stop (R)" : "Record (R)"}
     >
       <span className="rec-btn-glyph">{recording ? "■" : "●"}</span>
       <span className="rec-btn-label">
-        {recording ? "STOP" : "REC"} <span className="btn-hint">␣</span>
+        {recording ? "STOP" : "REC"} <span className="btn-hint">R</span>
       </span>
     </button>
   );

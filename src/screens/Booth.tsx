@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   currentDevice,
   discardTake,
@@ -10,29 +9,32 @@ import {
   setInputDevice,
   startRecording,
   stopRecording,
-  takePath,
   undoDiscard,
   type DeviceInfo,
 } from "../lib/ipc";
 import { playSfx, setRecordingGate } from "../lib/sfx";
 import { useAudioFrames } from "../hooks/useAudioFrames";
+import { useTakePlayer } from "../hooks/useTakePlayer";
 import { useKeymap } from "../hooks/useKeymap";
 import { Oscilloscope } from "../components/Oscilloscope";
 import { LevelMeter } from "../components/LevelMeter";
 import { TakeStack } from "../components/TakeStack";
+import { WaveformEditor } from "../components/WaveformEditor";
 import { Teleprompter } from "../components/Teleprompter";
 import { GlitchFlash } from "../components/GlitchFlash";
 import { Btn, RecBtn } from "../components/Btn";
-import type { Session, Take } from "../lib/session";
-import { passageChapter, topTake } from "../lib/session";
+import type { Cut, Session, Take } from "../lib/session";
+import { passageChapter, selectedIndex, selectedTake } from "../lib/session";
 
 const fmtClock = (ms: number) => {
   const s = ms / 1000;
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}.${Math.floor((s % 1) * 10)}`;
 };
 
-// Screen 2 — the core loop. SPACE rec/stop · P play · R-R revert · U undo ·
-// ENTER accept▸next · J/K navigate · G regroup · TAB review.
+// Screen 2 — the core loop. Audacity-style transport (founder 2026-06-12):
+// SPACE play/pause · R rec/stop · D-D revert · U undo · ENTER accept▸next ·
+// J/K navigate · G regroup · TAB review. In the waveform: click=cursor,
+// drag=select, DEL=cut selection, ✕=restore.
 export function Booth({
   episodeDir,
   session,
@@ -56,10 +58,16 @@ export function Booth({
   const [error, setError] = useState<string | null>(null);
   const [revertArmed, setRevertArmed] = useState(false);
   const [undo, setUndo] = useState<{ passage: number; take: Take } | null>(null);
-  const [playing, setPlaying] = useState(false);
   const [recFlash, setRecFlash] = useState(0);
   const { frame, lastAt } = useAudioFrames();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Web Audio player: gapless, click-free playback of the kept spans + a smooth
+  // playhead (replaces the old <audio> currentTime-seek path — gap #26).
+  const player = useTakePlayer(episodeDir);
+  const { playing, playheadRef } = player;
+  // where Play starts (editing cursor) and an optional selection end, reported
+  // by the waveform editor.
+  const [playStart, setPlayStart] = useState(0);
+  const [playEnd, setPlayEnd] = useState<number | null>(null);
   const revertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busy = useRef(false); // serialize start/stop invokes
@@ -112,11 +120,19 @@ export function Booth({
     void saveSession(episodeDir, s);
   };
 
-  const stopPlayback = () => {
-    audioRef.current?.pause();
-    audioRef.current = null;
-    setPlaying(false);
-  };
+  const stopPlayback = player.stop;
+
+  // the editor reports where Play should begin (cursor) or a selection to limit
+  // to. Any such change resets playback, so the next Space plays from the new
+  // spot rather than resuming a stale paused element.
+  const onPlayTarget = useCallback(
+    (start: number, end: number | null) => {
+      setPlayStart(start);
+      setPlayEnd(end);
+      stopPlayback();
+    },
+    [stopPlayback],
+  );
 
   // revert-arm and undo-window are per-passage intents: ANY context change
   // (navigate, record, accept, leave) disarms them — DESIGN.md gap fixes #1/#2
@@ -138,7 +154,9 @@ export function Booth({
         disarmRevert();
         if (undo?.passage === cursor) cancelUndo(); // gap fix #2
         setError(null);
-        playSfx("toggle", 0.4); // before the stream opens — never bleeds
+        // let the record cue FINISH before the mic opens, so its tail never
+        // bleeds into the take (gate is still open here, so the cue is audible)
+        await playSfx("toggle", 0.4);
         setRecordingGate(true);
         await startRecording(episodeDir, cursor);
         setRecStart(Date.now());
@@ -163,17 +181,54 @@ export function Booth({
     }
   };
 
-  const playTop = async () => {
+  // Space / Play button — Audacity-style Play/Pause (gap #25). First press plays
+  // the SELECTED take from the cursor (or just the selection), skipping its cuts
+  // gaplessly via the Web Audio player (gap #26). Playing → PAUSE in place; next
+  // press → RESUME. Moving the cursor/selection resets (onPlayTarget → stop), so
+  // a fresh Space plays from the new spot.
+  const togglePlay = async () => {
     if (recording || !passage) return;
-    if (playing) return stopPlayback();
-    const t = topTake(passage);
+    const t = selectedTake(passage);
     if (!t) return playSfx("error", 0.3);
-    const path = await takePath(episodeDir, t.file);
-    const el = new Audio(`${convertFileSrc(path)}?t=${Date.now()}`);
-    audioRef.current = el;
-    el.onended = () => setPlaying(false);
-    setPlaying(true);
-    void el.play().catch(() => setPlaying(false));
+    try {
+      const ok = await player.toggle(t, playStart, playEnd);
+      if (ok === false) playSfx("error", 0.3); // nothing audible to play
+    } catch (e) {
+      setError(`playback failed: ${String(e)}`);
+      playSfx("error", 0.3);
+    }
+  };
+
+  // click a take row → make it the kept take. Selection changes what plays, so
+  // stop any in-flight playback. Persisted (rides the Rust round-trip).
+  const selectTake = (index: number) => {
+    if (recording || !passage) return;
+    if (index === selectedIndex(passage)) return;
+    stopPlayback();
+    const passages = session.passages.map((p, i) =>
+      i === cursor ? { ...p, selected: index } : p,
+    );
+    playSfx("nav", 0.35);
+    setSessionAndSave({ ...session, passages });
+  };
+
+  // persist the cut list onto the selected take (called on edit release). An
+  // empty list stores undefined so untouched takes stay byte-clean.
+  const setCuts = (cuts: Cut[]) => {
+    if (!passage) return;
+    const sel = selectedIndex(passage);
+    const value = cuts.length ? cuts : undefined;
+    const passages = session.passages.map((p, i) =>
+      i === cursor
+        ? {
+            ...p,
+            takes: p.takes.map((tk, ti) =>
+              ti === sel ? { ...tk, cuts: value } : tk,
+            ),
+          }
+        : p,
+    );
+    setSessionAndSave({ ...session, passages });
   };
 
   const revert = async () => {
@@ -205,7 +260,7 @@ export function Booth({
   // Same disk semantics as revert — the file moves to discarded/, never deleted.
   const deleteTakeAt = async (index: number) => {
     if (recording || !passage) return;
-    if (index === passage.takes.length - 1) stopPlayback(); // deleting what's playing
+    if (index === selectedIndex(passage)) stopPlayback(); // deleting what's playing
     disarmRevert(); // the stack is changing under the armed intent
     try {
       const [s, take] = await discardTakeAt(episodeDir, cursor, index);
@@ -274,9 +329,10 @@ export function Booth({
 
   useKeymap(
     {
-      space: () => void toggleRecord(),
-      p: () => void playTop(),
-      r: () => void revert(),
+      space: () => void togglePlay(),
+      p: () => void togglePlay(), // alias for play/pause
+      r: () => void toggleRecord(),
+      d: () => void revert(),
       u: () => void doUndo(),
       enter: accept,
       j: () => nav(1),
@@ -298,7 +354,7 @@ export function Booth({
         }
       },
     },
-    [session, recording, revertArmed, undo, playing],
+    [session, recording, revertArmed, undo, playing, playStart, playEnd],
   );
 
   const recorded = session.passages.filter((p) => p.takes.length > 0).length;
@@ -403,14 +459,28 @@ export function Booth({
         onSaveEdits={saveEdits}
       />
 
-      {/* oscilloscope strip */}
+      {/* strip: live oscilloscope while recording; otherwise the selected take's
+          static waveform + crop handles (or the idle breathe when no take) */}
       <div style={{ position: "relative", margin: "10px 0 14px" }}>
-        <Oscilloscope
-          frame={frame}
-          lastAt={lastAt}
-          recording={recording}
-          height={110}
-        />
+        {!recording && passage && selectedTake(passage) ? (
+          <WaveformEditor
+            episodeDir={episodeDir}
+            take={selectedTake(passage)!}
+            takeFile={selectedTake(passage)!.file}
+            onCuts={setCuts}
+            onPlayTarget={onPlayTarget}
+            playheadRef={playheadRef}
+            playing={playing}
+            height={110}
+          />
+        ) : (
+          <Oscilloscope
+            frame={frame}
+            lastAt={lastAt}
+            recording={recording}
+            height={110}
+          />
+        )}
         {recording && (
           <div
             style={{
@@ -486,15 +556,15 @@ export function Booth({
         <span style={{ flex: 1 }} />
         <Btn
           id="play"
-          label={playing ? "■ Stop" : "▶ Play"}
-          hint="p"
+          label={playing ? "❚❚ Pause" : "▶ Play"}
+          hint="␣"
           disabled={recording || !passage || passage.takes.length === 0}
-          onClick={() => void playTop()}
+          onClick={() => void togglePlay()}
         />
         <Btn
           id="revert"
           label={revertArmed ? "Confirm ↩" : "↩ Revert"}
-          hint="r·r"
+          hint="d·d"
           variant="danger"
           disabled={recording || !passage || passage.takes.length === 0}
           onClick={() => void revert()}
@@ -533,9 +603,11 @@ export function Booth({
         {passage && (
           <TakeStack
             passage={passage}
+            selectedIndex={selectedIndex(passage)}
             revertArmed={revertArmed}
             playing={playing}
             disabled={recording}
+            onSelect={selectTake}
             onDelete={(i) => void deleteTakeAt(i)}
           />
         )}

@@ -168,15 +168,15 @@ fn stop_recording(
         bits: 24,
     });
     s.device = audio::current_device().ok().map(|d| d.name);
-    s.passages
-        .get_mut(passage)
-        .ok_or("passage out of range")?
-        .takes
-        .push(Take {
-            file: path.file_name().unwrap().to_string_lossy().into_owned(),
-            duration_sec: info.duration_sec,
-            recovered: false,
-        });
+    let p = s.passages.get_mut(passage).ok_or("passage out of range")?;
+    p.takes.push(Take {
+        file: path.file_name().unwrap().to_string_lossy().into_owned(),
+        duration_sec: info.duration_sec,
+        recovered: false,
+        cuts: vec![],
+    });
+    // newest take auto-selected (clears any prior manual selection)
+    p.selected = None;
     session::save(&episode_dir, &s).map_err(|e| format!("{e:#}"))?;
     Ok(s)
 }
@@ -260,6 +260,14 @@ fn take_path(dir: String, file: String) -> String {
         .into_owned()
 }
 
+/// Downsampled peak envelope of a take, for the inline crop waveform. Returns
+/// `buckets` peaks in 0..1 (one streaming pass over the WAV).
+#[tauri::command]
+fn take_waveform(dir: String, file: String, buckets: usize) -> Result<Vec<f32>, String> {
+    let path = session::takes_dir(Path::new(&dir)).join(file);
+    wav::waveform_peaks(&path, buckets).map_err(|e| format!("{e:#}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -290,6 +298,7 @@ pub fn run() {
             edit_unit_text,
             undo_discard,
             take_path,
+            take_waveform,
             ffmpeg_status,
             export_session
         ])
