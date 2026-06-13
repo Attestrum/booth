@@ -74,3 +74,55 @@ jobs:
           dmg=$(ls src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg | head -1)
           cp "$dmg" Booth-macOS-AppleSilicon.dmg
           gh release upload "${{ github.ref_name }}" Booth-macOS-AppleSilicon.dmg --clobber -R "${{ github.repository }}"
+
+  # Windows x64 build. Currently UNSIGNED — installers trigger a one-time
+  # SmartScreen "Unknown Publisher" prompt until Authenticode signing is added.
+  # Whisper runs CPU-only on Windows (see Cargo.toml target tables), so no GPU
+  # toolkit is needed on the runner.
+  release-windows:
+    needs: release # let the macOS job create the draft release first (avoids a create race)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # Fetch the Windows yt-dlp sidecar (yt-dlp.exe → yt-dlp-x86_64-pc-windows-msvc.exe).
+      # Runs under Git Bash, which ships on windows-latest.
+      - name: Fetch yt-dlp sidecar
+        shell: bash
+        run: bash src-tauri/scripts/fetch-yt-dlp.sh
+
+      - uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Attestrum Booth v__VERSION__"
+          releaseDraft: true
+          args: --target x86_64-pc-windows-msvc --bundles nsis
+
+      # Stable-named installer for attestrum.com deep-links, mirroring the
+      # macOS dmg convention.
+      - name: Upload stable-named installer
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          setup=$(ls src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe | head -1)
+          cp "$setup" Booth-Windows-x64-setup.exe
+          gh release upload "${{ github.ref_name }}" Booth-Windows-x64-setup.exe --clobber -R "${{ github.repository }}"

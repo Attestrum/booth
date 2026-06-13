@@ -27,8 +27,18 @@ hound = "3.5"
 crossbeam-channel = "0.5"
 docx-rs = "0.4.20"
 genpdfi = "0.2.7"
-whisper-rs = { version = "0.16.0", features = ["metal"] }
 symphonia = { version = "0.5", features = ["mp3", "aac", "isomp4", "alac"] }
 rubato = "0.15"
 sha2 = "0.11.0"
 ureq = "2"
+
+# whisper.cpp GPU backend is platform-specific: Metal on macOS, plain CPU
+# everywhere else (Windows/Linux). CPU is universally compatible — no GPU
+# toolkit at build time, no driver requirement at runtime — at the cost of
+# slower inference. A Vulkan/CUDA Windows backend can be added later behind
+# its own target table without touching the macOS path.
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16.0", features = ["metal"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+whisper-rs = { version = "0.16.0" }

@@ -41,21 +41,31 @@ pub struct Fetched {
 /// Resolve the yt-dlp binary: bundled next to the executable (release), the dev
 /// `binaries/` sidecar, or `yt-dlp` on PATH as a last resort.
 pub fn resolve_bin() -> PathBuf {
+    // Tauri strips the target triple from externalBin sidecars but keeps the
+    // platform's executable extension, so the bundled binary is `yt-dlp.exe` on
+    // Windows and `yt-dlp` elsewhere.
+    let bundled_name = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let p = dir.join("yt-dlp");
+            let p = dir.join(bundled_name);
             if p.exists() {
                 return p;
             }
         }
     }
+    // Dev sidecar: fetch-yt-dlp.sh names it by full target triple.
+    let dev_name = if cfg!(windows) {
+        "yt-dlp-x86_64-pc-windows-msvc.exe"
+    } else {
+        "yt-dlp-aarch64-apple-darwin"
+    };
     let dev = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("binaries")
-        .join("yt-dlp-aarch64-apple-darwin");
+        .join(dev_name);
     if dev.exists() {
         return dev;
     }
-    PathBuf::from("yt-dlp")
+    PathBuf::from(bundled_name)
 }
 
 /// A configured yt-dlp invoker. Holds the binary path and, crucially, the
