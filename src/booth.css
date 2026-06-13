@@ -496,6 +496,38 @@ body,
   margin-top: 20px;
 }
 
+/* top-left back button — clears the traffic lights + the 38px drag strip */
+.back-link {
+  align-self: flex-start;
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 6px 14px;
+  background: rgba(127, 224, 255, 0.06);
+  border: 1px solid rgba(127, 224, 255, 0.5);
+  color: var(--cyan);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--dim-cyan);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.back-link:hover {
+  background: rgba(127, 224, 255, 0.14);
+  border-color: var(--cyan);
+  box-shadow: 0 0 16px rgba(127, 224, 255, 0.25);
+}
+.back-link:active {
+  transform: translateY(1px);
+}
+
 /* ---- transcript library: filter/sort chips + row actions ---- */
 .chip {
   background: rgba(127, 224, 255, 0.04);

@@ -17,6 +17,7 @@ import { FORMAT_INFO, paragraphs } from "../lib/transcript";
 import { playSfx } from "../lib/sfx";
 import { useKeymap } from "../hooks/useKeymap";
 import { Btn } from "../components/Btn";
+import { BackButton } from "../components/BackButton";
 import { GlitchFlash } from "../components/GlitchFlash";
 
 // Launched either to RUN a new job (url/file) or to OPEN a saved transcript.
@@ -111,6 +112,7 @@ export function Transcribe({
 
   return (
     <div className="screen" style={{ padding: "72px 90px 64px" }}>
+      <BackButton onClick={onBack} />
       <div
         style={{
           color: "var(--dim-cyan)",
