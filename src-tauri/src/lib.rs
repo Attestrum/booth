@@ -3,6 +3,14 @@ mod config;
 mod export;
 mod script;
 mod session;
+// Transcription data model + IO. Public entry points are consumed by the
+// transcribe engine + export command (Phase 2/3 wiring); allow until then.
+#[allow(dead_code)]
+mod subtitles;
+#[allow(dead_code)]
+mod transcript;
+#[allow(dead_code)]
+mod transcript_export;
 mod wav;
 
 use audio::{AudioEngine, DeviceInfo};
