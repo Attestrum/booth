@@ -7,6 +7,8 @@
     "core:default",
     "core:event:default",
     "core:window:default",
-    "dialog:default"
+    "core:path:default",
+    "dialog:default",
+    "dialog:allow-save"
   ]
 }
