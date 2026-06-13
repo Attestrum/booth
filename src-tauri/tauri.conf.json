@@ -32,10 +32,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "app",
-      "dmg"
-    ],
+    "targets": "all",
     "externalBin": [
       "binaries/yt-dlp"
     ],
@@ -52,6 +49,11 @@
     "macOS": {
       "minimumSystemVersion": "13.0",
       "entitlements": "entitlements.plist"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
     }
   }
 }

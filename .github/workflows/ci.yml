@@ -34,3 +34,33 @@ jobs:
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
+
+  # Windows build check: catch cross-platform breakage (whisper.cpp CPU build,
+  # cpal/WASAPI, path handling) on every PR instead of only at release time.
+  test-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test

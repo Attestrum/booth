@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Windows support (build pipeline):** the app now builds for Windows x64. The
+  Whisper backend is platform-split — Metal on macOS, CPU-only on Windows/Linux
+  (universal compatibility, no GPU toolkit required) — and the yt-dlp sidecar,
+  bundle targets (NSIS installer with the WebView2 bootstrapper), and CI/release
+  workflows are all cross-platform. The first Windows installer is **unsigned**,
+  so it shows a one-time SmartScreen "Unknown Publisher" prompt until
+  Authenticode signing is added. Tag a release to produce
+  `Booth-Windows-x64-setup.exe` alongside the macOS dmg.
+
 ## v0.1.2 — 2026-06-13
 
 - **Import several scripts from one folder:** importing a `.md`/`.txt` into a
