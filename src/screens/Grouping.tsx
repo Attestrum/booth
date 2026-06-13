@@ -121,7 +121,7 @@ export function Grouping({
   );
 
   return (
-    <div className="screen" style={{ padding: "72px 90px 32px" }}>
+    <div className="screen" style={{ padding: "72px 90px 64px" }}>
       <div
         style={{
           color: "var(--dim-cyan)",
@@ -189,10 +189,11 @@ export function Grouping({
                 </span>
                 <span
                   style={{
-                    color: active ? "var(--cyan)" : "var(--dim-cyan)",
+                    // no faded text (gap #28): inactive rows use the soft tier,
+                    // not opacity stacked on dim.
+                    color: active ? "var(--cyan)" : "var(--dim-cyan-soft)",
                     fontSize: 13,
                     lineHeight: 1.5,
-                    opacity: active ? 1 : 0.75,
                   }}
                 >
                   {passageText(session, p)}

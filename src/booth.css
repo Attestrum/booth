@@ -2,10 +2,14 @@
   --cyan: #7fe0ff;
   --bg: #0a0e14;
   --green: #7fffb0;
-  --dim-cyan: rgba(127, 224, 255, 0.45);
-  /* RULE (founder 2026-06-12): --faint-cyan is for BORDERS and FILLS only —
-     never text. The minimum readable text tier is --dim-cyan; de-emphasize
-     further with opacity on top of dim, not by dropping to faint. */
+  /* RULE (founder 2026-06-13): NO FADED TEXT. Every text token meets a
+     legibility floor on the #0A0E14 background. --dim-cyan IS that floor
+     (secondary text); de-emphasize by stepping to --dim-cyan-soft, NEVER by
+     stacking opacity on top of dim below the floor. --faint-cyan stays for
+     BORDERS and FILLS only — never text. Disabled controls are the only
+     exemption. (Supersedes the 2026-06-12 opacity-step-down rule — gap #28.) */
+  --dim-cyan: rgba(127, 224, 255, 0.72);
+  --dim-cyan-soft: rgba(127, 224, 255, 0.58);
   --faint-cyan: rgba(127, 224, 255, 0.12);
   --amber: #e0a52e;
   --red: #ff6b6b;
@@ -78,7 +82,7 @@ body,
   background: rgba(127, 224, 255, 0.06);
 }
 .load-row:hover .load-row-open {
-  opacity: 0.8;
+  opacity: 1;
 }
 
 /* ---- buttons (DESIGN.md §C — visually apparent clickables; brightened
@@ -164,7 +168,7 @@ body,
     inset 0 0 18px rgba(127, 255, 176, 0.1);
 }
 .btn-hint {
-  opacity: 0.6;
+  opacity: 0.82;
   font-size: clamp(9px, 0.7vw, 10px);
   letter-spacing: 0.1em;
 }
@@ -287,7 +291,6 @@ body,
   font-family: inherit;
   font-size: 11px;
   letter-spacing: 0.1em;
-  opacity: 0.9;
   cursor: pointer;
   padding: 4px 6px;
   transition: color 120ms ease;
@@ -364,7 +367,6 @@ body,
   background: transparent;
   border: none;
   color: var(--dim-cyan);
-  opacity: 0.8;
   font-family: inherit;
   font-size: 12px;
   line-height: 1;

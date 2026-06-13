@@ -155,10 +155,9 @@ export function Review({
                 gap: 16,
                 padding: "7px 10px",
                 fontSize: 12,
-                // text floor is dim-cyan (never faint) — unrecorded rows
-                // step down via opacity instead
-                color: "var(--dim-cyan)",
-                opacity: t ? 1 : 0.65,
+                // no faded text (gap #28): recorded rows at the dim-cyan floor,
+                // unrecorded ones step down to the soft tier — not via opacity.
+                color: t ? "var(--dim-cyan)" : "var(--dim-cyan-soft)",
                 border: `1px solid ${active ? "var(--dim-cyan)" : "transparent"}`,
                 background: active ? "var(--faint-cyan)" : "transparent",
                 borderBottom: active

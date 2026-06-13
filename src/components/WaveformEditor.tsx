@@ -382,7 +382,7 @@ export function WaveformEditor({
           </button>
         )}
         <span style={{ flex: 1 }} />
-        <span style={{ opacity: 0.7 }}>
+        <span style={{ color: "var(--dim-cyan-soft)" }}>
           CLICK = CURSOR · DRAG = SELECT · DEL = CUT · ▾ = RESTORE THAT BREAK
         </span>
       </div>

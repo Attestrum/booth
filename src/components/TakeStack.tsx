@@ -73,8 +73,9 @@ export function TakeStack({
               marginBottom: 4,
               border: `1px solid ${border}`,
               borderLeftWidth: 3,
-              color: selected ? "var(--cyan)" : "var(--dim-cyan)",
-              opacity: selected ? 1 : Math.max(0.4, 0.85 - i * 0.15),
+              // no faded text (gap #28): unselected takes sit at the soft tier
+              // instead of fading toward 0.18 down the stack.
+              color: selected ? "var(--cyan)" : "var(--dim-cyan-soft)",
               fontSize: 12,
               textShadow: selected ? "0 0 10px var(--dim-cyan)" : "none",
               cursor: disabled || selected ? "default" : "pointer",

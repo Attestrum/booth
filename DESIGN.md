@@ -26,6 +26,11 @@ flowchart TD
     LOAD -->|"Enter / click row\n(session.json exists → resume)"| BOOTH
     LOAD -->|"R / RESCAN button"| LOAD
     LOAD -->|"J/K move selection"| LOAD
+    LOAD -->|"paste URL ⏎ / ⌁ FILE\n(audio/video → transcribe)"| TRANSCRIBE
+    LOAD -->|"click saved transcript row\n(TRANSCRIPTS group)"| TRANSCRIBE
+
+    TRANSCRIBE["TRANSCRIBE — URL/file → captions-or-Whisper,\nresult + 8-format export (section 7)"]
+    TRANSCRIBE -->|"Esc / ‹ back"| LOAD
 
     GROUP["TRANSCRIPT — full segment list,\nmerge/split passages"]
     GROUP -->|"Enter / BEGIN ▸ BOOTH\n(cursor = SELECTED row)"| BOOTH
@@ -250,6 +255,57 @@ classDiagram
 **Invariants:** passages tile `units` contiguously (no gaps/overlaps); merge/split are only legal
 on take-less passages; `cursor` is always clamped to a valid index.
 
+## 7. Transcription (URL / file → transcript)
+
+A **local, personal** transcription service folded into the booth: paste a URL
+(YouTube / TikTok / IG / FB) or pick a local file (mp3/wav/m4a/mp4/mov). For URLs
+the existing caption track is imported when present (cheap, no compute); otherwise
+audio is transcribed with Whisper (`large-v3-turbo`, Metal). **Downloaded media is
+transient and always deleted; output is transcript text only** (no media export,
+no hosted service) — deliberately outside the stream-ripping risk zone.
+
+```mermaid
+flowchart TD
+    S["transcribe(source)"] --> K{"URL or local file?"}
+    K -->|"local file"| MOD
+    K -->|"URL"| PRB["yt-dlp probe captions\n--write-subs --write-auto-subs --skip-download"]
+    PRB --> HAS{"captions available?"}
+    HAS -->|"manual track"| IMPM["import VTT/SRT → segments\nsource = manual-subs"] --> SAVE
+    HAS -->|"auto-only"| IMPA["import VTT/SRT → segments\nsource = auto-subs"] --> SAVE
+    HAS -->|"none"| DLA["yt-dlp download audio → TEMP file"] --> MOD
+    MOD{"model present + SHA-256 verified?"}
+    MOD -->|"no"| DLM["download large-v3-turbo from HF\nstream + verify hash → app-data/models"] --> DEC
+    MOD -->|"yes"| DEC["decode audio (symphonia:\nwav/mp3/m4a/mp4/mov)"]
+    DEC --> RES["resample → 16 kHz mono f32 (rubato)"]
+    RES --> WSP["whisper-rs + Metal → segments\nsource = whisper"] --> SAVE
+    SAVE["save transcript JSON → app-data/transcripts/\nDELETE temp media (Drop guard, every exit)"] --> R["TRANSCRIBE screen: result + export"]
+
+    PRB -->|"network / yt-dlp error"| ERR["amber error stage + retry"]
+    DEC -->|"unsupported container"| ERR
+    DLM -->|"hash mismatch / net fail\n(never load an unverified model)"| ERR
+```
+
+**Contract:** the caption-skip path runs no Whisper and needs no ffmpeg — it is the
+common path on YouTube; TikTok/IG/FB usually fall through to the Whisper path
+(their caption tracks are unreliable/absent). The 1.6 GB `WhisperContext` loads
+once on a dedicated worker thread (mirrors `AudioEngine`) and stays resident;
+progress streams over `transcribe:progress` / `model:progress` like
+`export:progress`. Temp media is removed on every exit, success or failure.
+
+```mermaid
+flowchart LR
+    R["result: Segment[] + meta\n(title, source, model, duration)"] --> P{"pick format"}
+    P --> F["TXT · SRT · VTT · JSON\nCSV · HTML · DOCX · PDF"]
+    F --> D["native save dialog\n(default name = transcript title)"]
+    D --> W["Rust writer for the chosen format\n(genpdf for PDF, docx-rs for DOCX,\nstring-build for the rest)"]
+    W --> OK["file written → glitch-flash"]
+```
+
+**Contract:** one unified `Segment {startMs, endMs, text, source}` feeds the saved
+library JSON and every exporter (captions and Whisper produce the same shape). The
+saved transcript is re-openable from the LOAD **TRANSCRIPTS** group. SRT uses
+`HH:MM:SS,mmm`; VTT uses `HH:MM:SS.mmm`; no text is ever cropped or ellipsized.
+
 ---
 
 ## GAP AUDIT (iteration 2 — found by drawing the diagrams above)
@@ -284,5 +340,7 @@ on take-less passages; `cursor` is always clamped to a valid index.
 | 27 | Export always wrote a generic `narration/voice.wav` + `voice.mp3`, backing the prior one up as a timestamped `.bak` — every render lumped into one folder under one name, easy to lose / hard to tell apart. | founder directive | Export writes `<document>.wav` / `<document>.mp3` (from `session.episode`, sanitized) directly in the episode dir (next to the source), with ` (N)` dedup so a re-export never clobbers (`export_stem` + `dedup_base`). Replaces the `backup()`/`replaced/` scheme (gap #3). |
 | 26 | Playing a take with cuts clicked and stuttered at every splice — playback seeked an `<audio>` element's `currentTime` at each cut (decoder restart → click) on the coarse ~4 Hz `timeupdate` event (visual stutter). | quality | `useTakePlayer` (Web Audio): decode the WAV once into an `AudioBuffer`, schedule the kept spans back-to-back via `AudioBufferSourceNode.start(when, offset, dur)` on the `AudioContext` clock (sample-accurate, gapless) with a ~6 ms GainNode edge ramp to kill the splice click; playhead read from the audio clock via rAF (smooth, mapped original→kept for display). Play now matches export. |
 | 25 | Transport keys fought editor muscle memory — `Space` = Record / `P` = Play / `R·R` = Revert, the inverse of every audio editor, so reaching for Space-to-play armed a take instead. And the record cue bled into the head of each take (the SFX fired but the mic opened before it finished). | founder directive | **Audacity transport:** `Space` = Play/**Pause** (resumes in place; cursor/selection change resets), `R` = Record/Stop, `D·D` = Revert (double-tap). Waveform: click = cursor, drag = selection, `Del` = cut, `✕` = restore — modeled on Audacity. **Cue no longer bleeds:** `playSfx` resolves on end and the record path `await`s the cue before opening the mic. Help overlay / README / RecBtn / state diagram updated. |
+
+| 28 | Secondary text was still too faint and, worse, the prior rule (#23) actively encouraged stacking `opacity` ON TOP of `--dim-cyan` — unrecorded Review rows hit ~0.29, inactive Grouping units ~0.34, deep TakeStack cards ~0.18. The founder reads it as faded. | readability rule | **No faded text.** `--dim-cyan` floor raised 0.45→0.72; new `--dim-cyan-soft` (0.58) is the de-emphasis tier. Every text token meets a legibility floor on `#0A0E14`; de-emphasis steps to the soft tier, NEVER by multiplying opacity below the floor. `--faint-cyan` stays borders/fills only. Disabled controls are the sole exemption. Compounding opacities removed from Review/Grouping/TakeStack/WaveformEditor + `.btn-hint`/`.take-delete`/`.device-label`. (Supersedes #23.) |
 
 Future gaps: add the transition to the diagram FIRST, then implement, then append a row here.

@@ -4,7 +4,11 @@ export const THEME = {
   cyan: "#7FE0FF",
   bg: "#0A0E14",
   verifiedGreen: "#7FFFB0",
-  dimCyan: "rgba(127, 224, 255, 0.45)",
+  // Legibility floor for secondary text (raised 0.45→0.72, founder 2026-06-13,
+  // gap #28). Step down to dimCyanSoft for de-emphasis — never stack opacity
+  // below the floor. Mirrors booth.css --dim-cyan / --dim-cyan-soft.
+  dimCyan: "rgba(127, 224, 255, 0.72)",
+  dimCyanSoft: "rgba(127, 224, 255, 0.58)",
   faintCyan: "rgba(127, 224, 255, 0.12)",
   amber: "#E0A52E",
   red: "#FF6B6B",

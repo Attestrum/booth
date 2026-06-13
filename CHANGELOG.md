@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Legibility pass — no more faded text:** the secondary text floor was raised
+  (`--dim-cyan` 0.45→0.72) and a dedicated soft tier (`--dim-cyan-soft`) replaces
+  the old habit of stacking `opacity` on top of dim (which dragged some rows as
+  low as ~0.18). Group headers, inactive session/passage rows, take-stack cards,
+  stats, and key hints now all read clearly. `--faint-cyan` stays borders/fills
+  only; disabled controls are the only dimmed exemption (gap #28).
 - **No silence between beats on export:** passages now abut directly in the
   concatenated `voice.wav` (the 350 ms inter-passage "breath room" is gone) —
   trim any per-take dead air with the waveform editor.
