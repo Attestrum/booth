@@ -39,6 +39,11 @@ jobs:
 
       - run: npm ci
 
+      # the yt-dlp sidecar (transcription externalBin) is git-ignored — fetch it
+      # before the build or `tauri build` aborts on the missing resource path
+      - name: Fetch yt-dlp sidecar
+        run: bash src-tauri/scripts/fetch-yt-dlp.sh
+
       - name: Write App Store Connect API key
         run: printf '%s' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/AuthKey.p8"
         env:
