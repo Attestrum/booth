@@ -5,6 +5,10 @@ mod config;
 #[allow(dead_code)]
 mod decode;
 mod export;
+// Whisper model download-on-first-run + SHA-256 verify. Consumed by the
+// transcribe engine (Phase 2); allow until then.
+#[allow(dead_code)]
+mod model;
 mod script;
 mod session;
 // Transcription data model + IO. Public entry points are consumed by the

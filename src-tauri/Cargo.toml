@@ -31,4 +31,4 @@ whisper-rs = { version = "0.16.0", features = ["metal"] }
 symphonia = { version = "0.5", features = ["mp3", "aac", "isomp4", "alac"] }
 rubato = "0.15"
 sha2 = "0.11.0"
-ureq = "3.3.0"
+ureq = "2"
