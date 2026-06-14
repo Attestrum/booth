@@ -13,7 +13,7 @@ use crate::{model, subtitles, transcripts, ytdlp};
 use anyhow::{bail, Context, Result};
 use crossbeam_channel::{unbounded, Sender};
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
 
 /// What to transcribe.
 pub enum Source {
@@ -139,7 +139,7 @@ fn build_from_url(
     // the slow probe and go straight to audio + Whisper. The download captures
     // the title/duration that the caption pass would otherwise have supplied.
     if ytdlp::skips_caption_probe(url) {
-        emit(app, "NO CAPTIONS ▸ downloading audio", None);
+        emit(app, "DOWNLOADING AUDIO", None);
         let (audio, title, duration) = ydl.download_audio_with_meta(url, scratch)?;
         let (segments, duration_sec, model) = whisper_pipeline(app, whisper, app_data, &audio)?;
         return Ok(Built {
@@ -180,7 +180,7 @@ fn build_from_url(
             segments,
         })
     } else {
-        emit(app, "NO CAPTIONS ▸ downloading audio", None);
+        emit(app, "DOWNLOADING AUDIO", None);
         let audio = ydl.download_audio(url, scratch)?;
         let (segments, duration_sec, model) = whisper_pipeline(app, whisper, app_data, &audio)?;
         Ok(Built {
@@ -216,12 +216,24 @@ fn whisper_pipeline(
     emit(app, "DECODING", None);
     let (pcm, duration_sec) = decode_to_mono_16k(audio)?;
 
+    // Bundled Silero VAD model (864 KB resource). Resolve once per job; if it's
+    // missing we transcribe without VAD rather than fail.
+    let vad_path = app
+        .path()
+        .resolve("resources/models/ggml-silero-v6.2.0.bin", BaseDirectory::Resource)
+        .ok()
+        .filter(|p| p.exists());
+    if vad_path.is_none() {
+        eprintln!("transcribe: Silero VAD model not found; transcribing without VAD");
+    }
+    let vad = vad_path.as_deref().and_then(|p| p.to_str());
+
     emit(app, "TRANSCRIBING", Some(0));
     let app3 = app.clone();
     let segments = whisper
         .as_ref()
         .unwrap()
-        .transcribe(&pcm, None, move |p| {
+        .transcribe(&pcm, None, vad, move |p| {
             emit(&app3, "TRANSCRIBING", Some(p.clamp(0, 100) as u8))
         })?;
 

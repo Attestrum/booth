@@ -8,7 +8,8 @@ useful for anyone who records voice-over against a written script.
 Everything is local. No accounts, no cloud, no telemetry. Your script, your
 takes, and your exports never leave your machine.
 
-> Status: pre-release. v1 targets macOS 13+ on Apple Silicon.
+> Status: pre-release. macOS 13+ on Apple Silicon (notarized `.dmg`) and
+> Windows 10/11 x64 (NSIS installer; the first build is unsigned).
 
 ## What it does
 
@@ -80,10 +81,16 @@ recording input.
 
 ## Install
 
-Download the latest `.dmg` from
+**macOS** — download the latest `.dmg` from
 [Releases](https://github.com/Attestrum/booth/releases/latest), drag
 `Booth.app` to Applications, and launch. macOS will ask for microphone access
 on your first recording.
+
+**Windows** — download `Booth-Windows-x64-setup.exe` from
+[Releases](https://github.com/Attestrum/booth/releases/latest) and run it. The
+first build is unsigned, so SmartScreen shows an "Unknown publisher" notice —
+click **More info → Run anyway**. The installer pulls the WebView2 runtime if
+it isn't already present.
 
 `voice.mp3` export and mixed-sample-rate sessions use
 [ffmpeg](https://ffmpeg.org) if it's installed (`brew install ffmpeg`); WAV

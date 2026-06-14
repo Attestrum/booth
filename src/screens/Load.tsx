@@ -19,6 +19,24 @@ import type { Session } from "../lib/session";
 
 const MEDIA_EXTS = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "mp4", "mov", "m4v"];
 
+// Accept any well-formed http(s) link (scheme optional) so yt-dlp can try it;
+// reject bare words like "asdf" that aren't links. Returns the normalized URL
+// (scheme added) or null when the input isn't a plausible link.
+function normalizeUrl(raw: string): string | null {
+  const s = raw.trim();
+  if (!s) return null;
+  for (const candidate of [s, `https://${s}`]) {
+    try {
+      const u = new URL(candidate);
+      if ((u.protocol === "http:" || u.protocol === "https:") && u.hostname.includes("."))
+        return u.href;
+    } catch {
+      /* not a URL in this form */
+    }
+  }
+  return null;
+}
+
 interface Row {
   dir: string;
   name: string;
@@ -108,8 +126,13 @@ export function Load({
   };
 
   const submitUrl = () => {
-    const u = url.trim();
-    if (!u) return;
+    const u = normalizeUrl(url);
+    if (!u) {
+      playSfx("error");
+      setError("enter a valid video link");
+      return;
+    }
+    setError("");
     playSfx("toggle");
     onTranscribe("url", u);
   };
@@ -207,7 +230,7 @@ export function Load({
             if (e.key === "Enter") submitUrl();
             else if (e.key === "Escape") (e.target as HTMLInputElement).blur();
           }}
-          placeholder="paste a youtube / tiktok / video link …"
+          placeholder="paste a youtube / tiktok / instagram / facebook link …"
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
@@ -217,9 +240,28 @@ export function Load({
           id="tx-go"
           label="Transcribe"
           variant="success"
-          disabled={!url.trim()}
+          disabled={!normalizeUrl(url)}
           onClick={submitUrl}
         />
+        <Btn
+          id="transcripts"
+          label={`Transcripts${transcripts.length ? ` ${transcripts.length}` : ""}`}
+          hint="t"
+          onClick={() => onShowTranscripts()}
+        />
+      </div>
+
+      <div
+        style={{
+          color: "var(--dim-cyan)",
+          fontSize: 10,
+          letterSpacing: "0.25em",
+          margin: "28px 0 10px",
+          borderBottom: "1px solid var(--faint-cyan)",
+          paddingBottom: 6,
+        }}
+      >
+        NARRATE ▸ SELECT A SCRIPT TO RECORD
       </div>
 
       <div style={{ overflowY: "auto", flex: 1 }}>
@@ -358,26 +400,10 @@ export function Load({
         </span>
         <span style={{ flex: 1 }} />
         <Btn
-          id="transcripts"
-          label={`Transcripts${transcripts.length ? ` ${transcripts.length}` : ""}`}
-          hint="t"
-          onClick={() => onShowTranscripts()}
-        />
-        <Btn
           id="import-script"
           label="Import Script…"
           hint="i"
           onClick={() => void importFile()}
-        />
-        <Btn id="open-folder" label="Open Folder…" hint="o" onClick={() => void openFolder()} />
-        <Btn
-          id="rescan"
-          label="Rescan"
-          hint="r"
-          onClick={() => {
-            playSfx("nav", 0.3);
-            void rescan().catch((e) => setError(String(e)));
-          }}
         />
       </div>
     </div>

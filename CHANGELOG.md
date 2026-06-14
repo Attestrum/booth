@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.1.4 — 2026-06-13
+
+- **Take playback fixed (macOS & Windows):** playing a recorded take failed with
+  `TypeError: Load failed`. The webview loads the take's WAV through the Tauri
+  asset protocol via `fetch()`, but the Content-Security-Policy had no
+  `connect-src` directive, so the fetch fell back to `default-src 'self'` and was
+  blocked. Added `connect-src` for the asset/ipc origins; takes play back
+  normally now.
+- **Better transcription accuracy — Silero VAD pre-pass:** local Whisper now runs
+  a bundled Silero voice-activity model (`ggml-silero-v6.2.0.bin`) ahead of
+  inference. Whisper large-v3 was trained on VAD-filtered audio, so feeding it
+  raw silence or static could trigger confident repetition/hallucination loops;
+  stripping non-speech keeps the decoder in-distribution for cleaner transcripts.
+  Imported caption tracks are unaffected.
+- **Transcribe screen cleanup:**
+  - The link box now rejects non-links — typing a few stray characters no longer
+    starts a transcription; enter a real video link (or pick a file).
+  - The placeholder lists Instagram and Facebook alongside YouTube and TikTok.
+  - A **NARRATE** header separates the recordable scripts from the transcribe bar.
+  - The **Transcripts** button moved up into the transcribe bar (it belongs with
+    the transcription controls), and the footer is now just **Import Script**
+    (Open Folder / Rescan removed as redundant).
+  - The "NO CAPTIONS" progress line is now simply "DOWNLOADING AUDIO".
+- **Waveform editor:** clicking anywhere off the waveform (or on the highlight
+  itself) now drops the current selection, so it's easy to deselect.
+
 ## v0.1.3 — 2026-06-13
 
 - **Reliable TikTok / Instagram / Facebook transcription:** these platforms

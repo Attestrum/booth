@@ -78,6 +78,8 @@ export function WaveformEditor({
   const drag = useRef<Drag | null>(null);
   const selRef = useRef<Sel | null>(null);
   selRef.current = sel;
+  const cursorRef = useRef(0);
+  cursorRef.current = cursor;
 
   // the collapsed (kept) timeline
   const spans = useMemo(() => spansFromCuts(cuts, dur), [cuts, dur]);
@@ -240,6 +242,24 @@ export function WaveformEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cuts, cursor, dur]);
 
+  // Click anywhere that isn't a button or the waveform strip to drop the
+  // selection. Clicks inside the strip are left to onBgPointerDown (which
+  // collapses the selection to a cursor); clicks on a button are preserved so
+  // CUT / PLAY / REVERT can still act on the current selection.
+  useEffect(() => {
+    const onDocDown = (e: PointerEvent) => {
+      if (!selRef.current) return;
+      const el = e.target as Element | null;
+      if (!el) return;
+      if (boxRef.current?.contains(el)) return; // inside the strip → its own handler
+      if (el.closest("button")) return; // a button → keep the selection
+      setSel(null);
+      onPlayTarget(cursorRef.current, null);
+    };
+    document.addEventListener("pointerdown", onDocDown);
+    return () => document.removeEventListener("pointerdown", onDocDown);
+  }, [onPlayTarget]);
+
   const onBgPointerDown = (e: React.PointerEvent) => {
     if (drag.current) return;
     const sec = secAt(e.clientX);
@@ -287,10 +307,10 @@ export function WaveformEditor({
           </button>
         ))}
 
-        {/* live selection */}
+        {/* live selection — clicks on the body fall through to the strip handler
+            (which collapses the selection); only the edge handles capture, to resize */}
         {hasSel && sel && (
           <div
-            onPointerDown={(e) => e.stopPropagation()}
             style={{
               position: "absolute",
               top: 0,
